@@ -181,7 +181,15 @@
     "tritanopia": "Tritanopía",
     "screenReader": "Optimizado para Lector de Pantalla",
     "focusIndicators": "Indicadores de Foco Mejorados",
-    "dyslexiaFont": "Fuente para Dislexia"
+    "dyslexiaFont": "Fuente para Dislexia",
+    "general": "General",
+    "logo": "Logo",
+    "platformLogo": "Logo de la plataforma",
+    "logoDescription": "Suba un logo personalizado para su plataforma. Se mostrará en la barra lateral y la página de inicio de sesión.",
+    "uploadLogo": "Subir logo",
+    "deleteLogo": "Eliminar logo",
+    "logoPreview": "Vista previa",
+    "noLogo": "No se ha subido ningún logo"
   },
   "system": {
     "title": "Sistema",

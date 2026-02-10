@@ -181,7 +181,15 @@
     "tritanopia": "Tritanopie",
     "screenReader": "Optimisé lecteur d'écran",
     "focusIndicators": "Indicateurs de focus améliorés",
-    "dyslexiaFont": "Police adaptée dyslexie"
+    "dyslexiaFont": "Police adaptée dyslexie",
+    "general": "Général",
+    "logo": "Logo",
+    "platformLogo": "Logo de la plateforme",
+    "logoDescription": "Téléchargez un logo personnalisé pour votre plateforme. Il sera affiché dans la barre latérale et la page de connexion.",
+    "uploadLogo": "Télécharger le logo",
+    "deleteLogo": "Supprimer le logo",
+    "logoPreview": "Aperçu",
+    "noLogo": "Aucun logo téléchargé"
   },
   "system": {
     "title": "Système",
