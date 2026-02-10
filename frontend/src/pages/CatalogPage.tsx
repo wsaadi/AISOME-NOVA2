@@ -60,7 +60,7 @@ const CatalogPage: React.FC = () => {
         />
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Chip
-            label={t('common.all') || 'Tous'}
+            label={t('common.all')}
             onClick={() => setFilterType(null)}
             variant={!filterType ? 'filled' : 'outlined'}
             color={!filterType ? 'primary' : 'default'}

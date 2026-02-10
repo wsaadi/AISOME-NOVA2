@@ -217,6 +217,9 @@
     "success": "Éxito",
     "error": "Error",
     "yes": "Sí",
-    "no": "No"
+    "no": "No",
+    "all": "Todos",
+    "collapse": "Contraer",
+    "expand": "Expandir"
   }
 }

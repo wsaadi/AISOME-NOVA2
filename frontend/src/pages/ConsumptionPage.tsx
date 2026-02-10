@@ -11,7 +11,9 @@ import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie,
   Cell, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Add, Edit, Delete } from '@mui/icons-material';
+import {
+  Add, Edit, Delete, BarChart as BarChartIcon, ShowChart, StackedLineChart, PieChart as PieChartIcon,
+} from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import api from '../services/api';
 
@@ -97,10 +99,10 @@ const ConsumptionTab: React.FC = () => {
             <Grid item xs={12} sm={3}>
               <ToggleButtonGroup value={chartType} exclusive onChange={(_, v) => v && setChartType(v)} size="small" fullWidth
                 sx={{ '& .MuiToggleButton-root': { borderRadius: 2, textTransform: 'none', fontWeight: 500, fontSize: '0.8rem' } }}>
-                <ToggleButton value="bar">{t('consumption.bar')}</ToggleButton>
-                <ToggleButton value="line">{t('consumption.line')}</ToggleButton>
-                <ToggleButton value="area">{t('consumption.area')}</ToggleButton>
-                <ToggleButton value="pie">{t('consumption.pie')}</ToggleButton>
+                <ToggleButton value="bar"><Tooltip title={t('consumption.bar')}><BarChartIcon fontSize="small" /></Tooltip></ToggleButton>
+                <ToggleButton value="line"><Tooltip title={t('consumption.line')}><ShowChart fontSize="small" /></Tooltip></ToggleButton>
+                <ToggleButton value="area"><Tooltip title={t('consumption.area')}><StackedLineChart fontSize="small" /></Tooltip></ToggleButton>
+                <ToggleButton value="pie"><Tooltip title={t('consumption.pie')}><PieChartIcon fontSize="small" /></Tooltip></ToggleButton>
               </ToggleButtonGroup>
             </Grid>
           </Grid>
