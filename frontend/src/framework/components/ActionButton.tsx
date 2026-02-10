@@ -2,7 +2,7 @@
  * ActionButton — Bouton d'action standardisé pour les agents.
  *
  * Usage:
- *   import { ActionButton } from '@framework/components';
+ *   import { ActionButton } from 'framework/components';
  *   <ActionButton label="Analyser" icon={<AnalyticsIcon />} onClick={handleAnalyze} />
  */
 

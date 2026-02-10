@@ -225,7 +225,7 @@ context.set_progress(50, "Analyse en cours, page 3/6...")
 
 ```tsx
 import React from 'react';
-import { AgentViewProps } from '@framework/types';
+import { AgentViewProps } from 'framework/types';
 
 const MonAgentView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }) => {
   // ...
@@ -246,13 +246,13 @@ export default MonAgentView;
 
 ```tsx
 // ✅ AUTORISÉ — Composants framework
-import { ChatPanel, FileUpload, ActionButton, DataTable, MarkdownView, SettingsPanel } from '@framework/components';
+import { ChatPanel, FileUpload, ActionButton, DataTable, MarkdownView, SettingsPanel } from 'framework/components';
 
 // ✅ AUTORISÉ — Hooks framework
-import { useAgent, useAgentStorage, useWebSocket } from '@framework/hooks';
+import { useAgent, useAgentStorage, useWebSocket } from 'framework/hooks';
 
 // ✅ AUTORISÉ — Types framework
-import { ChatMessage, AgentResponse, AgentManifest } from '@framework/types';
+import { ChatMessage, AgentResponse, AgentManifest } from 'framework/types';
 
 // ✅ AUTORISÉ — React standard
 import React, { useState, useEffect, useCallback } from 'react';

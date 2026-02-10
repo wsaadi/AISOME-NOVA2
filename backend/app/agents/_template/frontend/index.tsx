@@ -6,9 +6,9 @@
  */
 
 import React from 'react';
-import { ChatPanel } from '@framework/components';
-import { useAgent } from '@framework/hooks';
-import { AgentViewProps } from '@framework/types';
+import { ChatPanel } from 'framework/components';
+import { useAgent } from 'framework/hooks';
+import { AgentViewProps } from 'framework/types';
 
 const TemplateAgentView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   const { sendMessage, messages, isLoading, streamingContent } = useAgent(agent.slug, sessionId);

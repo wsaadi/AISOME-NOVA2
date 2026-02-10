@@ -4,7 +4,7 @@
  * Wrapper autour de MUI qui fournit une API simplifiée.
  *
  * Usage:
- *   import { DataTable } from '@framework/components';
+ *   import { DataTable } from 'framework/components';
  *   <DataTable
  *     columns={[
  *       { key: 'name', label: 'Nom' },

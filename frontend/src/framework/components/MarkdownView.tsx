@@ -2,7 +2,7 @@
  * MarkdownView — Rendu Markdown pour les réponses des agents.
  *
  * Usage:
- *   import { MarkdownView } from '@framework/components';
+ *   import { MarkdownView } from 'framework/components';
  *   <MarkdownView content="# Hello **world**" />
  */
 

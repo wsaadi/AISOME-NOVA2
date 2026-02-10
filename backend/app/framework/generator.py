@@ -193,9 +193,9 @@ def generate_index_tsx(slug: str, name: str) -> str:
  */
 
 import React, {{ useState }} from 'react';
-import {{ ChatPanel, ActionButton }} from '@framework/components';
-import {{ useAgent }} from '@framework/hooks';
-import {{ AgentViewProps }} from '@framework/types';
+import {{ ChatPanel, ActionButton }} from 'framework/components';
+import {{ useAgent }} from 'framework/hooks';
+import {{ AgentViewProps }} from 'framework/types';
 
 const {component_name}: React.FC<AgentViewProps> = ({{ agent, sessionId }}) => {{
   const {{ sendMessage, messages, isLoading, streamingContent }} = useAgent(agent.slug, sessionId);
@@ -223,7 +223,7 @@ def generate_styles_ts(slug: str) -> str:
  * Agent styles — Custom styles for this agent.
  *
  * Import framework theme utilities:
- *   import { useTheme } from '@framework/hooks';
+ *   import { useTheme } from 'framework/hooks';
  */
 
 export const styles = {
