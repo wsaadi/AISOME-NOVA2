@@ -4,6 +4,7 @@ import {
   Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Card, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, IconButton, Chip, FormControl, InputLabel, Select, MenuItem,
+  alpha, useTheme, Tooltip,
 } from '@mui/material';
 import { Add, Edit, Delete, ContentCopy, FileDownload, FileUpload } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
@@ -12,6 +13,7 @@ import api from '../services/api';
 const CatalogManagementPage: React.FC = () => {
   const { t } = useTranslation();
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [agents, setAgents] = useState<any[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
@@ -92,13 +94,23 @@ const CatalogManagementPage: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h4" fontWeight={600}>{t('agents.management')}</Typography>
+        <Box>
+          <Typography variant="h4" fontWeight={700}>{t('agents.management')}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {agents.length} agent{agents.length !== 1 ? 's' : ''}
+          </Typography>
+        </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <input type="file" ref={fileInputRef} onChange={handleImport} style={{ display: 'none' }} accept=".zip" />
-          <Button variant="outlined" startIcon={<FileUpload />} onClick={() => fileInputRef.current?.click()}>{t('agents.import')}</Button>
-          <Button variant="contained" startIcon={<Add />} onClick={() => handleCreate()}>{t('agents.create')}</Button>
+          <Button variant="outlined" startIcon={<FileUpload />} onClick={() => fileInputRef.current?.click()} sx={{ borderRadius: 2 }}>
+            {t('agents.import')}
+          </Button>
+          <Button variant="contained" startIcon={<Add />} onClick={() => handleCreate()} sx={{ px: 3 }}>
+            {t('agents.create')}
+          </Button>
         </Box>
       </Box>
+
       <Card>
         <TableContainer>
           <Table aria-label={t('agents.management')}>
@@ -109,22 +121,42 @@ const CatalogManagementPage: React.FC = () => {
                 <TableCell>{t('agents.type')}</TableCell>
                 <TableCell>{t('agents.version')}</TableCell>
                 <TableCell>{t('common.active')}</TableCell>
-                <TableCell>{t('common.actions')}</TableCell>
+                <TableCell align="right">{t('common.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {agents.map((agent: any) => (
-                <TableRow key={agent.id}>
-                  <TableCell>{agent.name}</TableCell>
-                  <TableCell><Chip label={agent.slug} size="small" variant="outlined" /></TableCell>
+                <TableRow key={agent.id} hover>
+                  <TableCell><Typography variant="body2" fontWeight={600}>{agent.name}</Typography></TableCell>
+                  <TableCell><Chip label={agent.slug} size="small" variant="outlined" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }} /></TableCell>
                   <TableCell><Chip label={agent.agent_type} size="small" color="primary" /></TableCell>
                   <TableCell>{agent.version}</TableCell>
                   <TableCell><Chip label={agent.is_active ? t('common.active') : t('common.inactive')} color={agent.is_active ? 'success' : 'default'} size="small" /></TableCell>
-                  <TableCell>
-                    <IconButton size="small" onClick={() => handleCreate(agent)} aria-label={t('common.edit')}><Edit /></IconButton>
-                    <IconButton size="small" onClick={() => { setSelectedAgent(agent); setDupForm({ new_name: `${agent.name} (copy)`, new_slug: `${agent.slug}-copy` }); setDuplicateOpen(true); }} aria-label={t('agents.duplicate')}><ContentCopy /></IconButton>
-                    <IconButton size="small" onClick={() => handleExport(agent.id)} aria-label={t('agents.export')}><FileDownload /></IconButton>
-                    <IconButton size="small" color="error" onClick={() => handleDelete(agent.id)} aria-label={t('common.delete')}><Delete /></IconButton>
+                  <TableCell align="right">
+                    <Tooltip title={t('common.edit')}>
+                      <IconButton size="small" onClick={() => handleCreate(agent)} sx={{
+                        bgcolor: alpha(theme.palette.primary.main, 0.08), mr: 0.5,
+                        '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.15) },
+                      }}><Edit fontSize="small" /></IconButton>
+                    </Tooltip>
+                    <Tooltip title={t('agents.duplicate')}>
+                      <IconButton size="small" onClick={() => { setSelectedAgent(agent); setDupForm({ new_name: `${agent.name} (copy)`, new_slug: `${agent.slug}-copy` }); setDuplicateOpen(true); }} sx={{
+                        bgcolor: alpha(theme.palette.info.main, 0.08), mr: 0.5,
+                        '&:hover': { bgcolor: alpha(theme.palette.info.main, 0.15) },
+                      }}><ContentCopy fontSize="small" /></IconButton>
+                    </Tooltip>
+                    <Tooltip title={t('agents.export')}>
+                      <IconButton size="small" onClick={() => handleExport(agent.id)} sx={{
+                        bgcolor: alpha(theme.palette.success.main, 0.08), mr: 0.5,
+                        '&:hover': { bgcolor: alpha(theme.palette.success.main, 0.15) },
+                      }}><FileDownload fontSize="small" /></IconButton>
+                    </Tooltip>
+                    <Tooltip title={t('common.delete')}>
+                      <IconButton size="small" color="error" onClick={() => handleDelete(agent.id)} sx={{
+                        bgcolor: alpha(theme.palette.error.main, 0.08),
+                        '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.15) },
+                      }}><Delete fontSize="small" /></IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -150,9 +182,9 @@ const CatalogManagementPage: React.FC = () => {
             </Select>
           </FormControl>
           <TextField fullWidth label={t('agents.systemPrompt')} value={form.system_prompt} onChange={e => setForm({ ...form, system_prompt: e.target.value })} margin="normal" multiline rows={4} />
-          <TextField fullWidth label={t('agents.config')} value={form.config} onChange={e => setForm({ ...form, config: e.target.value })} margin="normal" multiline rows={4} sx={{ fontFamily: 'monospace' }} />
+          <TextField fullWidth label={t('agents.config')} value={form.config} onChange={e => setForm({ ...form, config: e.target.value })} margin="normal" multiline rows={4} sx={{ '& textarea': { fontFamily: 'monospace' } }} />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleSave}>{t('common.save')}</Button>
         </DialogActions>
@@ -164,7 +196,7 @@ const CatalogManagementPage: React.FC = () => {
           <TextField fullWidth label={t('agents.newName')} value={dupForm.new_name} onChange={e => setDupForm({ ...dupForm, new_name: e.target.value })} margin="normal" required />
           <TextField fullWidth label={t('agents.newSlug')} value={dupForm.new_slug} onChange={e => setDupForm({ ...dupForm, new_slug: e.target.value })} margin="normal" required />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => setDuplicateOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleDuplicate}>{t('agents.duplicate')}</Button>
         </DialogActions>

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Box, Typography, Card, CardContent, Grid, FormControl, InputLabel,
   Select, MenuItem, TextField, ToggleButton, ToggleButtonGroup, Table,
-  TableBody, TableCell, TableContainer, TableHead, TableRow,
+  TableBody, TableCell, TableContainer, TableHead, TableRow, alpha, useTheme,
 } from '@mui/material';
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie,
@@ -11,10 +11,11 @@ import {
 } from 'recharts';
 import api from '../services/api';
 
-const COLORS = ['#1976d2', '#9c27b0', '#2e7d32', '#ed6c02', '#d32f2f', '#0288d1', '#f44336', '#4caf50'];
+const COLORS = ['#4F46E5', '#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#EC4899', '#14B8A6'];
 
 const ConsumptionPage: React.FC = () => {
   const { t } = useTranslation();
+  const theme = useTheme();
   const [data, setData] = useState<any[]>([]);
   const [rawData, setRawData] = useState<any[]>([]);
   const [groupBy, setGroupBy] = useState('day');
@@ -46,26 +47,32 @@ const ConsumptionPage: React.FC = () => {
   }));
 
   const renderChart = () => {
-    if (!chartData.length) return <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>{t('common.noData')}</Typography>;
+    if (!chartData.length) return (
+      <Box sx={{ py: 8, textAlign: 'center' }}>
+        <Typography color="text.secondary">{t('common.noData')}</Typography>
+      </Box>
+    );
     switch (chartType) {
       case 'line':
-        return <ResponsiveContainer width="100%" height={350}><LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="tokens_in" stroke="#1976d2" name={t('consumption.tokensIn')} /><Line type="monotone" dataKey="tokens_out" stroke="#9c27b0" name={t('consumption.tokensOut')} /></LineChart></ResponsiveContainer>;
+        return <ResponsiveContainer width="100%" height={350}><LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="tokens_in" stroke="#4F46E5" strokeWidth={2} name={t('consumption.tokensIn')} /><Line type="monotone" dataKey="tokens_out" stroke="#7C3AED" strokeWidth={2} name={t('consumption.tokensOut')} /></LineChart></ResponsiveContainer>;
       case 'area':
-        return <ResponsiveContainer width="100%" height={350}><AreaChart data={chartData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Area type="monotone" dataKey="tokens_in" stroke="#1976d2" fill="#1976d220" name={t('consumption.tokensIn')} /><Area type="monotone" dataKey="tokens_out" stroke="#9c27b0" fill="#9c27b020" name={t('consumption.tokensOut')} /></AreaChart></ResponsiveContainer>;
+        return <ResponsiveContainer width="100%" height={350}><AreaChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Area type="monotone" dataKey="tokens_in" stroke="#4F46E5" fill={alpha('#4F46E5', 0.15)} name={t('consumption.tokensIn')} /><Area type="monotone" dataKey="tokens_out" stroke="#7C3AED" fill={alpha('#7C3AED', 0.15)} name={t('consumption.tokensOut')} /></AreaChart></ResponsiveContainer>;
       case 'pie':
       case 'donut':
         const pieData = chartData.map((d, i) => ({ name: d.name, value: d.tokens_in + d.tokens_out }));
         return <ResponsiveContainer width="100%" height={350}><PieChart><Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={120} innerRadius={chartType === 'donut' ? 60 : 0} label>{pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer>;
       default:
-        return <ResponsiveContainer width="100%" height={350}><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="tokens_in" fill="#1976d2" name={t('consumption.tokensIn')} /><Bar dataKey="tokens_out" fill="#9c27b0" name={t('consumption.tokensOut')} /></BarChart></ResponsiveContainer>;
+        return <ResponsiveContainer width="100%" height={350}><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="tokens_in" fill="#4F46E5" radius={[4, 4, 0, 0]} name={t('consumption.tokensIn')} /><Bar dataKey="tokens_out" fill="#7C3AED" radius={[4, 4, 0, 0]} name={t('consumption.tokensOut')} /></BarChart></ResponsiveContainer>;
     }
   };
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight={600} gutterBottom>{t('consumption.title')}</Typography>
+      <Typography variant="h4" fontWeight={700} gutterBottom>{t('consumption.title')}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>{t('app.subtitle')}</Typography>
+
       <Card sx={{ mb: 3 }}>
-        <CardContent>
+        <CardContent sx={{ p: 2.5 }}>
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} sm={3}>
               <TextField fullWidth type="date" label={t('consumption.dateFrom')} value={dateFrom} onChange={e => setDateFrom(e.target.value)} InputLabelProps={{ shrink: true }} size="small" />
@@ -86,20 +93,22 @@ const ConsumptionPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={3}>
-              <ToggleButtonGroup value={chartType} exclusive onChange={(_, v) => v && setChartType(v)} size="small" fullWidth>
+              <ToggleButtonGroup value={chartType} exclusive onChange={(_, v) => v && setChartType(v)} size="small" fullWidth
+                sx={{ '& .MuiToggleButton-root': { borderRadius: 2, textTransform: 'none', fontWeight: 500, fontSize: '0.8rem' } }}>
                 <ToggleButton value="bar">{t('consumption.bar')}</ToggleButton>
                 <ToggleButton value="line">{t('consumption.line')}</ToggleButton>
                 <ToggleButton value="area">{t('consumption.area')}</ToggleButton>
                 <ToggleButton value="pie">{t('consumption.pie')}</ToggleButton>
-                <ToggleButton value="donut">{t('consumption.donut')}</ToggleButton>
               </ToggleButtonGroup>
             </Grid>
           </Grid>
         </CardContent>
       </Card>
+
       <Card sx={{ mb: 3 }}>
-        <CardContent>{renderChart()}</CardContent>
+        <CardContent sx={{ p: 3 }}>{renderChart()}</CardContent>
       </Card>
+
       <Card>
         <TableContainer>
           <Table size="small" aria-label={t('consumption.title')}>
@@ -114,11 +123,11 @@ const ConsumptionPage: React.FC = () => {
             </TableHead>
             <TableBody>
               {rawData.map((row: any) => (
-                <TableRow key={row.id}>
-                  <TableCell>{row.tokens_in}</TableCell>
-                  <TableCell>{row.tokens_out}</TableCell>
-                  <TableCell>${row.cost_in?.toFixed(6)}</TableCell>
-                  <TableCell>${row.cost_out?.toFixed(6)}</TableCell>
+                <TableRow key={row.id} hover>
+                  <TableCell>{row.tokens_in?.toLocaleString()}</TableCell>
+                  <TableCell>{row.tokens_out?.toLocaleString()}</TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace' }}>${row.cost_in?.toFixed(6)}</TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace' }}>${row.cost_out?.toFixed(6)}</TableCell>
                   <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
                 </TableRow>
               ))}

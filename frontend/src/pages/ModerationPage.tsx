@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Card, CardContent, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, IconButton, FormControl, InputLabel, Select,
-  MenuItem, Chip, Grid, Alert,
+  MenuItem, Chip, Alert, alpha, useTheme, Tooltip,
 } from '@mui/material';
 import { Add, Edit, Delete, PlayArrow } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
@@ -15,6 +15,7 @@ const ENTITY_TYPES = ['person', 'email', 'phone', 'address', 'credit_card', 'ssn
 const ModerationPage: React.FC = () => {
   const { t } = useTranslation();
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
   const [rules, setRules] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -62,16 +63,19 @@ const ModerationPage: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight={600} gutterBottom>{t('moderation.title')}</Typography>
+      <Typography variant="h4" fontWeight={700} gutterBottom>{t('moderation.title')}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>{t('app.subtitle')}</Typography>
 
       <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>{t('moderation.testModeration')}</Typography>
+        <CardContent sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom fontWeight={600}>{t('moderation.testModeration')}</Typography>
           <TextField fullWidth multiline rows={3} label={t('moderation.testInput')} value={testText} onChange={e => setTestText(e.target.value)} sx={{ mb: 2 }} />
-          <Button variant="outlined" startIcon={<PlayArrow />} onClick={handleTest}>{t('moderation.testModeration')}</Button>
+          <Button variant="outlined" startIcon={<PlayArrow />} onClick={handleTest} sx={{ borderRadius: 2 }}>
+            {t('moderation.testModeration')}
+          </Button>
           {testResult && (
             <Box sx={{ mt: 2 }}>
-              <Alert severity="info" sx={{ mb: 1 }}><strong>{t('moderation.testResult')}:</strong> {testResult.redacted}</Alert>
+              <Alert severity="info" sx={{ mb: 1, borderRadius: 2 }}><strong>{t('moderation.testResult')}:</strong> {testResult.redacted}</Alert>
               {testResult.entities?.length > 0 && (
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                   {testResult.entities.map((e: any, i: number) => (
@@ -85,9 +89,12 @@ const ModerationPage: React.FC = () => {
       </Card>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">{t('moderation.rules')}</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>{t('moderation.createRule')}</Button>
+        <Typography variant="h6" fontWeight={600}>{t('moderation.rules')}</Typography>
+        <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()} sx={{ px: 3 }}>
+          {t('moderation.createRule')}
+        </Button>
       </Box>
+
       <Card>
         <TableContainer>
           <Table aria-label={t('moderation.rules')}>
@@ -98,20 +105,35 @@ const ModerationPage: React.FC = () => {
                 <TableCell>{t('moderation.entityTypes')}</TableCell>
                 <TableCell>{t('moderation.action')}</TableCell>
                 <TableCell>{t('common.active')}</TableCell>
-                <TableCell>{t('common.actions')}</TableCell>
+                <TableCell align="right">{t('common.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {rules.map((rule: any) => (
-                <TableRow key={rule.id}>
-                  <TableCell>{rule.name}</TableCell>
-                  <TableCell><Chip label={rule.rule_type} size="small" /></TableCell>
-                  <TableCell>{rule.entity_types?.map((et: string) => <Chip key={et} label={et} size="small" sx={{ mr: 0.5, mb: 0.5 }} />)}</TableCell>
+                <TableRow key={rule.id} hover>
+                  <TableCell><Typography variant="body2" fontWeight={500}>{rule.name}</Typography></TableCell>
+                  <TableCell><Chip label={rule.rule_type} size="small" color="primary" /></TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      {rule.entity_types?.slice(0, 3).map((et: string) => <Chip key={et} label={et} size="small" variant="outlined" sx={{ height: 24, fontSize: '0.7rem' }} />)}
+                      {rule.entity_types?.length > 3 && <Chip label={`+${rule.entity_types.length - 3}`} size="small" sx={{ height: 24, fontSize: '0.7rem' }} />}
+                    </Box>
+                  </TableCell>
                   <TableCell><Chip label={t(`moderation.${rule.action}`)} size="small" color={rule.action === 'block' ? 'error' : rule.action === 'redact' ? 'warning' : 'info'} /></TableCell>
                   <TableCell><Chip label={rule.is_active ? t('common.active') : t('common.inactive')} color={rule.is_active ? 'success' : 'default'} size="small" /></TableCell>
-                  <TableCell>
-                    <IconButton size="small" onClick={() => handleOpen(rule)}><Edit /></IconButton>
-                    <IconButton size="small" color="error" onClick={() => handleDelete(rule.id)}><Delete /></IconButton>
+                  <TableCell align="right">
+                    <Tooltip title={t('common.edit')}>
+                      <IconButton size="small" onClick={() => handleOpen(rule)} sx={{
+                        bgcolor: alpha(theme.palette.primary.main, 0.08), mr: 0.5,
+                        '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.15) },
+                      }}><Edit fontSize="small" /></IconButton>
+                    </Tooltip>
+                    <Tooltip title={t('common.delete')}>
+                      <IconButton size="small" color="error" onClick={() => handleDelete(rule.id)} sx={{
+                        bgcolor: alpha(theme.palette.error.main, 0.08),
+                        '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.15) },
+                      }}><Delete fontSize="small" /></IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -150,7 +172,7 @@ const ModerationPage: React.FC = () => {
           <TextField fullWidth label={t('moderation.replacement')} value={form.replacement_template} onChange={e => setForm({ ...form, replacement_template: e.target.value })} margin="normal" />
           <TextField fullWidth label="Agent ID (optional)" value={form.agent_id} onChange={e => setForm({ ...form, agent_id: e.target.value })} margin="normal" placeholder="Leave empty for global rule" />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleSave}>{t('common.save')}</Button>
         </DialogActions>

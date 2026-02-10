@@ -4,6 +4,7 @@ import {
   Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Card, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, IconButton, FormControl, InputLabel, Select, MenuItem, Chip,
+  alpha, useTheme, Tooltip,
 } from '@mui/material';
 import { Add, Edit, Delete } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
@@ -12,6 +13,7 @@ import api from '../services/api';
 const QuotasPage: React.FC = () => {
   const { t } = useTranslation();
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
   const [quotas, setQuotas] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -51,9 +53,17 @@ const QuotasPage: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" fontWeight={600}>{t('quotas.title')}</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>{t('quotas.create')}</Button>
+        <Box>
+          <Typography variant="h4" fontWeight={700}>{t('quotas.title')}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {quotas.length} quota{quotas.length !== 1 ? 's' : ''}
+          </Typography>
+        </Box>
+        <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()} sx={{ px: 3 }}>
+          {t('quotas.create')}
+        </Button>
       </Box>
+
       <Card>
         <TableContainer>
           <Table aria-label={t('quotas.title')}>
@@ -65,21 +75,31 @@ const QuotasPage: React.FC = () => {
                 <TableCell>{t('quotas.period')}</TableCell>
                 <TableCell>{t('quotas.limitValue')}</TableCell>
                 <TableCell>{t('common.active')}</TableCell>
-                <TableCell>{t('common.actions')}</TableCell>
+                <TableCell align="right">{t('common.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {quotas.map((q: any) => (
-                <TableRow key={q.id}>
-                  <TableCell><Chip label={q.target_type} size="small" /></TableCell>
+                <TableRow key={q.id} hover>
+                  <TableCell><Chip label={q.target_type} size="small" color="primary" /></TableCell>
                   <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8em' }}>{q.target_id}</TableCell>
                   <TableCell><Chip label={t(`quotas.${q.quota_type}`)} size="small" color={q.quota_type === 'financial' ? 'warning' : 'info'} /></TableCell>
                   <TableCell>{t(`quotas.${q.period}`)}</TableCell>
-                  <TableCell>{q.quota_type === 'financial' ? `$${q.limit_value}` : q.limit_value.toLocaleString()}</TableCell>
+                  <TableCell><Typography variant="body2" fontWeight={600}>{q.quota_type === 'financial' ? `$${q.limit_value}` : q.limit_value.toLocaleString()}</Typography></TableCell>
                   <TableCell><Chip label={q.is_active ? t('common.active') : t('common.inactive')} color={q.is_active ? 'success' : 'default'} size="small" /></TableCell>
-                  <TableCell>
-                    <IconButton size="small" onClick={() => handleOpen(q)}><Edit /></IconButton>
-                    <IconButton size="small" color="error" onClick={() => handleDelete(q.id)}><Delete /></IconButton>
+                  <TableCell align="right">
+                    <Tooltip title={t('common.edit')}>
+                      <IconButton size="small" onClick={() => handleOpen(q)} sx={{
+                        bgcolor: alpha(theme.palette.primary.main, 0.08), mr: 0.5,
+                        '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.15) },
+                      }}><Edit fontSize="small" /></IconButton>
+                    </Tooltip>
+                    <Tooltip title={t('common.delete')}>
+                      <IconButton size="small" color="error" onClick={() => handleDelete(q.id)} sx={{
+                        bgcolor: alpha(theme.palette.error.main, 0.08),
+                        '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.15) },
+                      }}><Delete fontSize="small" /></IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -113,7 +133,7 @@ const QuotasPage: React.FC = () => {
           </FormControl>
           <TextField fullWidth label={t('quotas.limitValue')} type="number" value={form.limit_value} onChange={e => setForm({ ...form, limit_value: parseFloat(e.target.value) })} margin="normal" required />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleSave}>{t('common.save')}</Button>
         </DialogActions>
