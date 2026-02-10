@@ -7,8 +7,7 @@ import {
   useMediaQuery, useTheme, alpha, Tooltip,
 } from '@mui/material';
 import {
-  Menu as MenuIcon, Dashboard, People, Security, Settings as SettingsIcon,
-  SmartToy, Category, Assessment, MonetizationOn, Shield, SystemUpdate,
+  Menu as MenuIcon, Dashboard, SmartToy, Assessment, SystemUpdate,
   Brightness4, Brightness7, ManageAccounts, Inventory, Logout,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,17 +29,10 @@ const Layout: React.FC = () => {
   const menuItems = [
     { path: '/dashboard', icon: <Dashboard />, label: t('nav.dashboard'), show: true },
     { divider: true, show: true },
-    { path: '/users', icon: <People />, label: t('nav.users'), show: hasPermission('users', 'read') },
-    { path: '/roles', icon: <Security />, label: t('nav.roles'), show: hasPermission('roles', 'read') },
-    { path: '/llm-config', icon: <SettingsIcon />, label: t('nav.llmConfig'), show: hasPermission('llm_config', 'read') },
-    { divider: true, show: true },
-    { path: '/consumption', icon: <Assessment />, label: t('nav.consumption'), show: hasPermission('consumption', 'read') },
-    { path: '/quotas', icon: <MonetizationOn />, label: t('nav.quotas'), show: hasPermission('quotas', 'read') },
-    { path: '/costs', icon: <MonetizationOn />, label: t('nav.costs'), show: hasPermission('costs', 'read') },
-    { divider: true, show: true },
-    { path: '/moderation', icon: <Shield />, label: t('nav.moderation'), show: hasPermission('moderation', 'read') },
     { path: '/catalog', icon: <SmartToy />, label: t('nav.catalog'), show: true },
     { path: '/catalog/manage', icon: <Inventory />, label: t('nav.catalogManagement'), show: hasPermission('catalog_management', 'read') },
+    { divider: true, show: true },
+    { path: '/consumption', icon: <Assessment />, label: t('nav.consumption'), show: hasPermission('consumption', 'read') },
     { divider: true, show: true },
     { path: '/settings', icon: <ManageAccounts />, label: t('nav.settings'), show: true },
     { path: '/system', icon: <SystemUpdate />, label: t('nav.system'), show: hasPermission('system', 'read') },

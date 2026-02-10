@@ -96,8 +96,8 @@ const LoginPage: React.FC = () => {
               <Select value={i18n.language?.substring(0, 2) || 'en'} label={t('settings.language')}
                 onChange={(e) => i18n.changeLanguage(e.target.value)}>
                 <MenuItem value="en">English</MenuItem>
-                <MenuItem value="fr">Fran\u00e7ais</MenuItem>
-                <MenuItem value="es">Espa\u00f1ol</MenuItem>
+                <MenuItem value="fr">Français</MenuItem>
+                <MenuItem value="es">Español</MenuItem>
               </Select>
             </FormControl>
           </CardContent>

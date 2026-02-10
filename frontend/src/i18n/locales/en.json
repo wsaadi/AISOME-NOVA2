@@ -181,7 +181,15 @@
     "tritanopia": "Tritanopia",
     "screenReader": "Screen Reader Optimized",
     "focusIndicators": "Enhanced Focus Indicators",
-    "dyslexiaFont": "Dyslexia-Friendly Font"
+    "dyslexiaFont": "Dyslexia-Friendly Font",
+    "general": "General",
+    "logo": "Logo",
+    "platformLogo": "Platform Logo",
+    "logoDescription": "Upload a custom logo for your platform. It will be displayed in the sidebar and login page.",
+    "uploadLogo": "Upload Logo",
+    "deleteLogo": "Delete Logo",
+    "logoPreview": "Preview",
+    "noLogo": "No logo uploaded"
   },
   "system": {
     "title": "System",

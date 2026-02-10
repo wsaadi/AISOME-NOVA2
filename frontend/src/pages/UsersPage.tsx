@@ -221,8 +221,8 @@ const UsersPage: React.FC = () => {
               <InputLabel>{t('users.language')}</InputLabel>
               <Select value={form.preferred_language} onChange={e => setForm({ ...form, preferred_language: e.target.value })} label={t('users.language')}>
                 <MenuItem value="en">English</MenuItem>
-                <MenuItem value="fr">Fran\u00e7ais</MenuItem>
-                <MenuItem value="es">Espa\u00f1ol</MenuItem>
+                <MenuItem value="fr">Français</MenuItem>
+                <MenuItem value="es">Español</MenuItem>
               </Select>
             </FormControl>
           </Box>
