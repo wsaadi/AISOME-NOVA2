@@ -23,7 +23,13 @@ class Settings(BaseSettings):
     MINIO_ACCESS_KEY: str = "nova2admin"
     MINIO_SECRET_KEY: str = "nova2secret"
     MINIO_BUCKET: str = "nova2-agents"
+    MINIO_STORAGE_BUCKET: str = "nova2-storage"
     MINIO_SECURE: bool = False
+
+    # Redis
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
 
     # Admin
     ADMIN_EMAIL: str = "admin@nova2.local"
