@@ -16,3 +16,6 @@ minio==7.2.3
 gliner==0.2.5
 python-dateutil==2.8.2
 boto3==1.34.25
+celery[redis]==5.3.6
+redis==5.0.1
+websockets==12.0

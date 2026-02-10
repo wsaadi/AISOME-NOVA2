@@ -1,0 +1,19 @@
+{
+  "name": "Template Agent",
+  "slug": "template-agent",
+  "version": "1.0.0",
+  "description": "Agent template — point de départ pour tout nouvel agent",
+  "author": "",
+  "icon": "smart_toy",
+  "category": "general",
+  "tags": ["template"],
+  "dependencies": {
+    "tools": [],
+    "connectors": []
+  },
+  "triggers": [
+    {"type": "user_message", "config": {}}
+  ],
+  "capabilities": ["streaming"],
+  "min_platform_version": "1.0.0"
+}
