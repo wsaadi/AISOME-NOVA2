@@ -22,11 +22,27 @@ def _get_connector_models(connector) -> list[dict]:
     """Extrait le catalogue de modèles depuis le module du connecteur.
 
     Chaque connecteur AI définit une constante *_MODELS (ex: OPENAI_MODELS).
+    Tente sys.modules d'abord, puis importlib en fallback.
     """
+    import importlib
+    import importlib.util
+
     module_name = type(connector).__module__
+
+    # Try sys.modules first
     mod = sys.modules.get(module_name)
-    if not mod:
+
+    # Fallback: import the module directly
+    if mod is None:
+        try:
+            mod = importlib.import_module(module_name)
+        except ImportError:
+            pass
+
+    if mod is None:
+        logger.warning(f"Cannot find module {module_name} for connector models")
         return []
+
     for attr_name in dir(mod):
         attr = getattr(mod, attr_name, None)
         if attr_name.endswith("_MODELS") and isinstance(attr, list):

@@ -361,12 +361,15 @@ class ConnectorRegistry:
 
     def _load_connectors_from_file(self, py_file: Path) -> list[BaseConnector]:
         """Charge les connecteurs depuis un fichier Python."""
+        import sys as _sys
+
         module_name = f"app.framework.connectors.{py_file.stem}"
         spec = importlib.util.spec_from_file_location(module_name, py_file)
         if not spec or not spec.loader:
             return []
 
         module = importlib.util.module_from_spec(spec)
+        _sys.modules[module_name] = module
         spec.loader.exec_module(module)
 
         connectors = []
