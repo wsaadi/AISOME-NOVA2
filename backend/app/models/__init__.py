@@ -7,6 +7,7 @@ from app.models.cost import ModelCost
 from app.models.agent import Agent, AgentPermission
 from app.models.moderation import ModerationRule
 from app.models.agent_llm_config import AgentLLMConfig
+from app.models.agent_session import AgentSession, AgentSessionMessage
 
 __all__ = [
     "User", "UserRole", "Role",
@@ -14,4 +15,5 @@ __all__ = [
     "Consumption", "Quota", "ModelCost",
     "Agent", "AgentPermission", "ModerationRule",
     "AgentLLMConfig",
+    "AgentSession", "AgentSessionMessage",
 ]
