@@ -2,11 +2,20 @@
 BaseTool — Classe abstraite que TOUT tool de la plateforme doit étendre.
 
 Chaque tool est auto-descriptif : il porte ses propres métadonnées (nom, description,
-schemas input/output, exemples). Le registre les découvre automatiquement.
+schemas input/output, exemples, catégorie, mode d'exécution, connecteurs requis).
+Le registre les découvre automatiquement.
+
+Un tool est de la LOGIQUE PURE :
+- Jamais d'appel réseau direct → utiliser context.connectors
+- Jamais d'accès filesystem → utiliser context.storage
+- Jamais de secret en dur → les secrets vivent dans les connecteurs
 
 Usage:
-    from framework.base import BaseTool
-    from framework.schemas import ToolMetadata, ToolResult, ToolParameter, ToolExample
+    from app.framework.base import BaseTool
+    from app.framework.schemas import (
+        ToolMetadata, ToolResult, ToolParameter, ToolExample,
+        ToolExecutionMode, ToolErrorCode, HealthCheckResult,
+    )
 
     class TextSummarizer(BaseTool):
         @property
@@ -15,6 +24,9 @@ Usage:
                 slug="text-summarizer",
                 name="Résumeur de texte",
                 description="Résume un texte long en points clés",
+                category="text",
+                execution_mode=ToolExecutionMode.SYNC,
+                timeout_seconds=30,
                 input_schema=[
                     ToolParameter(name="text", type="string", required=True),
                     ToolParameter(name="max_points", type="integer", default=5),
@@ -23,12 +35,19 @@ Usage:
                     ToolParameter(name="summary", type="string"),
                     ToolParameter(name="points", type="array"),
                 ],
+                examples=[
+                    ToolExample(
+                        description="Résumé basique",
+                        input={"text": "Long texte...", "max_points": 3},
+                        output={"summary": "...", "points": ["...", "...", "..."]},
+                    ),
+                ],
             )
 
         async def execute(self, params, context):
             text = params["text"]
-            # ... logique du tool ...
-            return ToolResult(success=True, data={"summary": "...", "points": [...]})
+            summary = await context.llm.chat(f"Résume en points clés: {text}")
+            return ToolResult(success=True, data={"summary": summary, "points": []})
 """
 
 from __future__ import annotations
@@ -36,7 +55,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from app.framework.schemas import ToolMetadata, ToolResult
+from app.framework.schemas import HealthCheckResult, ToolErrorCode, ToolMetadata, ToolResult
 
 if TYPE_CHECKING:
     from app.framework.runtime.context import ToolContext
@@ -49,9 +68,20 @@ class BaseTool(ABC):
     Un tool est une fonction réutilisable exposée via API.
     Il est auto-descriptif et auto-découvert par le registre.
 
+    Règles absolues :
+        - Jamais d'import os, subprocess, requests, httpx, socket
+        - Jamais de open(), exec(), eval()
+        - Jamais de secret en dur
+        - Jamais d'appel réseau direct → context.connectors
+        - Jamais d'accès filesystem → context.storage
+
     Méthodes obligatoires:
         metadata : Retourne les métadonnées auto-descriptives du tool
         execute  : Exécute le tool avec les paramètres fournis
+
+    Méthodes optionnelles (overridable):
+        validate_params : Validation custom des paramètres
+        health_check    : Vérifie que le tool est opérationnel
     """
 
     @property
@@ -63,11 +93,11 @@ class BaseTool(ABC):
         Utilisées par:
         - Le registre pour l'auto-discovery
         - L'API GET /api/tools pour le catalogue
-        - La doc auto-générée AGENT_FRAMEWORK.md
+        - La doc auto-générée TOOL_FRAMEWORK.md
         - Le validateur pour vérifier les dépendances des agents
 
         Returns:
-            ToolMetadata avec slug, name, description, schemas, exemples
+            ToolMetadata avec slug, name, description, category, mode, schemas, exemples
         """
         ...
 
@@ -81,7 +111,12 @@ class BaseTool(ABC):
             context: Contexte d'exécution du tool (accès aux services plateforme)
 
         Returns:
-            ToolResult avec success, data, et éventuellement error
+            ToolResult avec success, data, et éventuellement error + error_code
+
+        Important:
+            - Pour les erreurs métier, retourner ToolResult(success=False, error_code=...)
+            - Ne JAMAIS lever d'exception pour des erreurs attendues
+            - Les exceptions non-catchées sont interceptées par le framework
         """
         ...
 
@@ -92,6 +127,10 @@ class BaseTool(ABC):
         Appelé automatiquement par le framework avant execute().
         Peut être surchargé pour des validations custom.
 
+        La validation de base vérifie :
+        - Présence des paramètres requis
+        - Types basiques (string, integer, number, boolean)
+
         Args:
             params: Paramètres à valider
 
@@ -100,6 +139,91 @@ class BaseTool(ABC):
         """
         errors = []
         for param_def in self.metadata.input_schema:
-            if param_def.required and param_def.name not in params:
+            value = params.get(param_def.name)
+
+            # Vérifier les paramètres requis
+            if param_def.required and value is None:
                 errors.append(f"Paramètre requis manquant: {param_def.name}")
+                continue
+
+            # Vérifier les types si la valeur est présente
+            if value is not None:
+                type_error = self._check_type(param_def.name, value, param_def.type)
+                if type_error:
+                    errors.append(type_error)
+
         return errors
+
+    async def health_check(self) -> HealthCheckResult:
+        """
+        Vérifie que le tool est opérationnel.
+
+        Par défaut, retourne healthy=True.
+        Surcharger pour vérifier les connecteurs requis, les dépendances internes, etc.
+
+        Exposé via l'API GET /api/tools/health.
+
+        Returns:
+            HealthCheckResult avec healthy, message, details
+        """
+        return HealthCheckResult(healthy=True, message="OK")
+
+    @staticmethod
+    def _check_type(name: str, value: Any, expected_type: str) -> str | None:
+        """Vérifie le type d'un paramètre."""
+        type_map = {
+            "string": str,
+            "integer": int,
+            "number": (int, float),
+            "boolean": bool,
+            "array": list,
+            "object": dict,
+        }
+        expected = type_map.get(expected_type)
+        if expected and not isinstance(value, expected):
+            return f"Paramètre '{name}': type '{type(value).__name__}' reçu, '{expected_type}' attendu"
+        return None
+
+    @staticmethod
+    def error(
+        message: str,
+        code: ToolErrorCode,
+        data: dict[str, Any] | None = None,
+    ) -> ToolResult:
+        """
+        Helper pour créer un ToolResult d'erreur standardisé.
+
+        Usage dans execute():
+            if not text:
+                return self.error("Le texte est vide", ToolErrorCode.INVALID_PARAMS)
+
+        Args:
+            message: Message d'erreur humain
+            code: Code d'erreur standardisé
+            data: Données supplémentaires optionnelles
+
+        Returns:
+            ToolResult avec success=False et error_code
+        """
+        return ToolResult(
+            success=False,
+            error=message,
+            error_code=code,
+            data=data or {},
+        )
+
+    @staticmethod
+    def success(data: dict[str, Any] | None = None) -> ToolResult:
+        """
+        Helper pour créer un ToolResult de succès.
+
+        Usage dans execute():
+            return self.success({"summary": "...", "points": [...]})
+
+        Args:
+            data: Données de résultat
+
+        Returns:
+            ToolResult avec success=True
+        """
+        return ToolResult(success=True, data=data or {})

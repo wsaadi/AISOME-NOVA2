@@ -6,10 +6,17 @@ automatiquement toute classe qui étend BaseTool.
 
 Ajouter un tool = créer un fichier Python avec une classe BaseTool. C'est tout.
 Supprimer = supprimer le fichier. Le registre se met à jour au prochain redémarrage.
+
+Le registre gère:
+- Auto-discovery (scan du dossier)
+- Exécution (sync / async selon metadata.execution_mode)
+- Health checks (agrégé et par tool)
+- Catalogue API (GET /api/tools)
 """
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import importlib.util
 import logging
@@ -18,7 +25,13 @@ from typing import Any, Optional
 
 from app.framework.base.tool import BaseTool
 from app.framework.runtime.context import ToolContext
-from app.framework.schemas import ToolMetadata, ToolResult
+from app.framework.schemas import (
+    HealthCheckResult,
+    ToolErrorCode,
+    ToolExecutionMode,
+    ToolMetadata,
+    ToolResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +47,8 @@ class ToolRegistry:
         registry = ToolRegistry()
         registry.discover()                    # Auto-discover au démarrage
         tools = registry.list_tools()           # Catalogue complet
-        result = await registry.execute_tool("text-summarizer", {"text": "..."})
+        result = await registry.execute_tool("text-summarizer", {"text": "..."}, context)
+        health = await registry.health_check_all()  # Santé de tous les tools
     """
 
     def __init__(self):
@@ -57,7 +71,7 @@ class ToolRegistry:
         count = 0
 
         for py_file in scan_dir.glob("*.py"):
-            if py_file.name in ("__init__.py", "registry.py"):
+            if py_file.name in ("__init__.py", "registry.py", "generator.py"):
                 continue
 
             try:
@@ -81,11 +95,15 @@ class ToolRegistry:
         Raises:
             ValueError: Si un tool avec le même slug existe déjà
         """
-        slug = tool.metadata.slug
+        meta = tool.metadata
+        slug = meta.slug
         if slug in self._tools:
             logger.warning(f"Tool '{slug}' already registered, replacing")
         self._tools[slug] = tool
-        logger.info(f"Tool registered: {slug} v{tool.metadata.version}")
+        logger.info(
+            f"Tool registered: {slug} v{meta.version} "
+            f"[{meta.category}] mode={meta.execution_mode.value}"
+        )
 
     def unregister(self, slug: str) -> bool:
         """
@@ -129,6 +147,22 @@ class ToolRegistry:
         """
         return [tool.metadata for tool in self._tools.values()]
 
+    def list_by_category(self, category: str) -> list[ToolMetadata]:
+        """
+        Liste les tools d'une catégorie donnée.
+
+        Args:
+            category: Catégorie (text, file, data, ai, media, general)
+
+        Returns:
+            Liste de ToolMetadata filtrées
+        """
+        return [
+            tool.metadata
+            for tool in self._tools.values()
+            if tool.metadata.category == category
+        ]
+
     def tool_exists(self, slug: str) -> bool:
         """
         Vérifie si un tool existe dans le registre.
@@ -150,23 +184,27 @@ class ToolRegistry:
         """
         Exécute un tool par son slug.
 
+        Pipeline d'exécution:
         1. Vérifie que le tool existe
         2. Valide les paramètres contre le schema
-        3. Exécute le tool
-        4. Retourne le résultat
+        3. Applique le timeout selon le mode (sync=30s, async=configurable)
+        4. Exécute le tool
+        5. Retourne le résultat avec error_code standardisé si erreur
 
         Args:
             slug: Slug du tool
             params: Paramètres d'entrée
-            context: Contexte d'exécution (optionnel)
+            context: Contexte d'exécution
 
         Returns:
-            ToolResult avec success, data, error
+            ToolResult avec success, data, error, error_code
         """
         tool = self.get_tool(slug)
         if not tool:
             return ToolResult(
-                success=False, error=f"Tool '{slug}' non trouvé dans le registre"
+                success=False,
+                error=f"Tool '{slug}' non trouvé dans le registre",
+                error_code=ToolErrorCode.INVALID_PARAMS,
             )
 
         # Validation des paramètres
@@ -175,16 +213,74 @@ class ToolRegistry:
             return ToolResult(
                 success=False,
                 error=f"Paramètres invalides: {'; '.join(errors)}",
+                error_code=ToolErrorCode.INVALID_PARAMS,
             )
 
-        # Exécution
+        # Contexte par défaut
+        ctx = context or ToolContext(user_id=0)
+
+        # Exécution avec timeout
+        timeout = tool.metadata.timeout_seconds
         try:
-            result = await tool.execute(params, context or ToolContext(user_id=0))
+            result = await asyncio.wait_for(
+                tool.execute(params, ctx),
+                timeout=timeout,
+            )
             logger.info(f"Tool executed: {slug} success={result.success}")
             return result
+        except asyncio.TimeoutError:
+            logger.error(f"Tool timeout ({slug}): exceeded {timeout}s")
+            return ToolResult(
+                success=False,
+                error=f"Timeout: le tool a dépassé {timeout}s",
+                error_code=ToolErrorCode.TIMEOUT,
+            )
         except Exception as e:
             logger.error(f"Tool execution error ({slug}): {e}", exc_info=True)
-            return ToolResult(success=False, error=f"Erreur d'exécution: {str(e)}")
+            return ToolResult(
+                success=False,
+                error=f"Erreur d'exécution: {str(e)}",
+                error_code=ToolErrorCode.PROCESSING_ERROR,
+            )
+
+    async def health_check_all(self) -> dict[str, HealthCheckResult]:
+        """
+        Exécute le health_check de tous les tools.
+
+        Returns:
+            Dict slug → HealthCheckResult
+        """
+        results = {}
+        for slug, tool in self._tools.items():
+            try:
+                results[slug] = await tool.health_check()
+            except Exception as e:
+                results[slug] = HealthCheckResult(
+                    healthy=False,
+                    message=f"Health check failed: {str(e)}",
+                )
+        return results
+
+    async def health_check_tool(self, slug: str) -> Optional[HealthCheckResult]:
+        """
+        Exécute le health_check d'un tool spécifique.
+
+        Args:
+            slug: Slug du tool
+
+        Returns:
+            HealthCheckResult ou None si le tool n'existe pas
+        """
+        tool = self.get_tool(slug)
+        if not tool:
+            return None
+        try:
+            return await tool.health_check()
+        except Exception as e:
+            return HealthCheckResult(
+                healthy=False,
+                message=f"Health check failed: {str(e)}",
+            )
 
     def _load_tools_from_file(self, py_file: Path) -> list[BaseTool]:
         """
@@ -224,3 +320,12 @@ class ToolRegistry:
             Liste de dicts avec toutes les infos de chaque tool
         """
         return [tool.metadata.model_dump() for tool in self._tools.values()]
+
+    def get_categories(self) -> list[str]:
+        """
+        Retourne la liste des catégories présentes.
+
+        Returns:
+            Liste de catégories uniques triées
+        """
+        return sorted({tool.metadata.category for tool in self._tools.values()})

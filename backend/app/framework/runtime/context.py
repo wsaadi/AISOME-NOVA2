@@ -414,10 +414,37 @@ class ToolContext:
     Plus restreint que AgentContext — un tool n'a pas accès aux autres agents
     ni à la mémoire de conversation.
 
-    Attributes:
-        user_id: Identifiant de l'utilisateur
-        storage: Service de stockage (scope plateforme, pas agent)
+    Services disponibles:
+        context.user_id      → ID de l'utilisateur qui exécute
+        context.storage      → Accès MinIO (read/write, scopé user)
+        context.connectors   → Accès aux connecteurs (execute)
+        context.llm          → Accès LLM plateforme (chat/stream)
+        context.progress()   → Callback progression (async tools)
+        context.logger       → Logger structuré du tool
+
+    Un tool ne reçoit RIEN d'autre. Pas d'accès filesystem, pas d'accès
+    réseau direct, pas d'accès DB, pas d'accès aux autres agents.
     """
 
     user_id: int
     storage: Optional[StorageService] = None
+    connectors: Optional[ConnectorService] = None
+    llm: Optional[LLMService] = None
+    logger: logging.Logger = field(default_factory=lambda: logging.getLogger("tool"))
+    _progress_callback: Optional[Any] = field(default=None, repr=False)
+
+    def progress(self, percent: int, message: str = "") -> None:
+        """
+        Publie la progression d'un tool async.
+
+        Utilisé uniquement par les tools en mode async.
+        Le framework route vers Redis pub/sub → WebSocket → frontend.
+
+        Args:
+            percent: Pourcentage de progression (0-100)
+            message: Message de statut optionnel
+        """
+        clamped = max(0, min(100, percent))
+        self.logger.info(f"Progress: {clamped}% - {message}")
+        if self._progress_callback:
+            self._progress_callback(clamped, message)

@@ -58,6 +58,27 @@ class MessageRole(str, Enum):
     SYSTEM = "system"
 
 
+class ToolExecutionMode(str, Enum):
+    """Mode d'exécution d'un tool."""
+
+    SYNC = "sync"
+    ASYNC = "async"
+
+
+class ToolErrorCode(str, Enum):
+    """Codes d'erreur standardisés pour les tools."""
+
+    INVALID_PARAMS = "INVALID_PARAMS"
+    TIMEOUT = "TIMEOUT"
+    RATE_LIMITED = "RATE_LIMITED"
+    EXTERNAL_API_ERROR = "EXTERNAL_API_ERROR"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    FILE_NOT_FOUND = "FILE_NOT_FOUND"
+    FILE_TOO_LARGE = "FILE_TOO_LARGE"
+    PROCESSING_ERROR = "PROCESSING_ERROR"
+    CONNECTOR_UNAVAILABLE = "CONNECTOR_UNAVAILABLE"
+
+
 # =============================================================================
 # Agent Manifest
 # =============================================================================
@@ -190,9 +211,20 @@ class ToolMetadata(BaseModel):
     name: str
     description: str
     version: str = "1.0.0"
+    category: str = Field(default="general", description="Catégorie du tool (text, file, data, ai, media, general)")
+    execution_mode: ToolExecutionMode = Field(
+        default=ToolExecutionMode.SYNC,
+        description="Mode d'exécution: sync (direct, 30s) ou async (Celery, progress)",
+    )
+    timeout_seconds: int = Field(default=30, description="Timeout en secondes (30 sync, 300 async)")
     input_schema: list[ToolParameter] = Field(default_factory=list)
     output_schema: list[ToolParameter] = Field(default_factory=list)
     examples: list[ToolExample] = Field(default_factory=list)
+    required_connectors: list[str] = Field(
+        default_factory=list,
+        description="Slugs des connecteurs requis par ce tool",
+    )
+    tags: list[str] = Field(default_factory=list, description="Tags pour la recherche")
 
 
 class ToolResult(BaseModel):
@@ -201,6 +233,17 @@ class ToolResult(BaseModel):
     success: bool = True
     data: dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    error_code: Optional[ToolErrorCode] = Field(
+        default=None, description="Code d'erreur standardisé pour le frontend"
+    )
+
+
+class HealthCheckResult(BaseModel):
+    """Résultat d'un health check de tool ou connecteur."""
+
+    healthy: bool
+    message: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 # =============================================================================
