@@ -376,11 +376,11 @@ class AgentEngine:
                 "base_url": "",
             }
 
-        # Récupérer la clé API depuis Vault
+        # Récupérer la clé API depuis Vault (VaultService est synchrone)
         api_key = ""
         if self._vault:
             try:
-                api_key = await self._vault.get_api_key(row.provider_slug) or ""
+                api_key = self._vault.get_api_key(row.provider_slug) or ""
             except Exception as e:
                 logger.warning(f"Failed to get API key from Vault: {e}")
 
@@ -388,5 +388,5 @@ class AgentEngine:
             "provider_slug": row.provider_slug,
             "model_slug": row.model_slug,
             "api_key": api_key,
-            "base_url": row.base_url,
+            "base_url": row.base_url or "",
         }

@@ -81,6 +81,16 @@ class LLMService:
         Returns:
             Texte de la réponse LLM
         """
+        if not self._base_url:
+            raise ValueError(
+                "LLM base_url is not configured. "
+                "Please configure an LLM provider in Settings > LLM Providers."
+            )
+        if not self._api_key:
+            raise ValueError(
+                f"No API key found for provider '{self._provider_slug}'. "
+                "Please set the API key in Settings > LLM Providers."
+            )
         import httpx
 
         headers = {
@@ -137,6 +147,16 @@ class LLMService:
         Yields:
             Tokens de la réponse au fur et à mesure
         """
+        if not self._base_url:
+            raise ValueError(
+                "LLM base_url is not configured. "
+                "Please configure an LLM provider in Settings > LLM Providers."
+            )
+        if not self._api_key:
+            raise ValueError(
+                f"No API key found for provider '{self._provider_slug}'. "
+                "Please set the API key in Settings > LLM Providers."
+            )
         import httpx
 
         headers = {
@@ -419,8 +439,8 @@ class AgentContext:
     tools: ToolService
     connectors: ConnectorService
     agents: AgentService
-    storage: StorageService
-    memory: MemoryService
+    storage: Optional[StorageService] = None
+    memory: Optional[MemoryService] = None
     lang: str = "en"
     _metadata: dict[str, Any] = field(default_factory=dict)
 
