@@ -23,6 +23,11 @@ TRANSLATIONS = {
         "moderation.blocked": "Content blocked by moderation rules",
         "system.update_available": "Update available",
         "system.up_to_date": "System is up to date",
+        "agent_creator.generating": "Generating agent files...",
+        "agent_creator.validation_passed": "All generated files passed validation",
+        "agent_creator.validation_failed": "Generated files have validation errors",
+        "agent_creator.stored": "Agent files stored successfully",
+        "agent_creator.invalid_slug": "Invalid agent slug format",
     },
     "fr": {
         "auth.invalid_credentials": "Email ou mot de passe invalide",
@@ -48,6 +53,11 @@ TRANSLATIONS = {
         "moderation.blocked": "Contenu bloqué par les règles de modération",
         "system.update_available": "Mise à jour disponible",
         "system.up_to_date": "Le système est à jour",
+        "agent_creator.generating": "Génération des fichiers de l'agent...",
+        "agent_creator.validation_passed": "Tous les fichiers générés ont passé la validation",
+        "agent_creator.validation_failed": "Les fichiers générés contiennent des erreurs de validation",
+        "agent_creator.stored": "Fichiers de l'agent stockés avec succès",
+        "agent_creator.invalid_slug": "Format de slug d'agent invalide",
     },
     "es": {
         "auth.invalid_credentials": "Correo electrónico o contraseña inválidos",
@@ -73,6 +83,11 @@ TRANSLATIONS = {
         "moderation.blocked": "Contenido bloqueado por reglas de moderación",
         "system.update_available": "Actualización disponible",
         "system.up_to_date": "El sistema está actualizado",
+        "agent_creator.generating": "Generando archivos del agente...",
+        "agent_creator.validation_passed": "Todos los archivos generados pasaron la validación",
+        "agent_creator.validation_failed": "Los archivos generados contienen errores de validación",
+        "agent_creator.stored": "Archivos del agente almacenados exitosamente",
+        "agent_creator.invalid_slug": "Formato de slug de agente inválido",
     },
 }
 
