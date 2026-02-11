@@ -42,6 +42,8 @@ celery_app.conf.update(
     # Retry
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    # Broker connection retry (required for Celery 6.0+)
+    broker_connection_retry_on_startup=True,
     # Queues
     task_default_queue="agents",
     task_routes={
