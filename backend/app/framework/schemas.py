@@ -79,6 +79,30 @@ class ToolErrorCode(str, Enum):
     CONNECTOR_UNAVAILABLE = "CONNECTOR_UNAVAILABLE"
 
 
+class ConnectorErrorCode(str, Enum):
+    """Codes d'erreur standardisés pour les connecteurs."""
+
+    # Configuration
+    INVALID_CONFIG = "INVALID_CONFIG"
+    INVALID_ACTION = "INVALID_ACTION"
+    INVALID_PARAMS = "INVALID_PARAMS"
+
+    # Authentification
+    AUTH_FAILED = "AUTH_FAILED"
+    TOKEN_EXPIRED = "TOKEN_EXPIRED"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+
+    # Réseau / service
+    CONNECTION_FAILED = "CONNECTION_FAILED"
+    TIMEOUT = "TIMEOUT"
+    RATE_LIMITED = "RATE_LIMITED"
+    EXTERNAL_API_ERROR = "EXTERNAL_API_ERROR"
+
+    # Internes
+    NOT_CONNECTED = "NOT_CONNECTED"
+    PROCESSING_ERROR = "PROCESSING_ERROR"
+
+
 # =============================================================================
 # Agent Manifest
 # =============================================================================
@@ -271,8 +295,12 @@ class ConnectorMetadata(BaseModel):
     name: str
     description: str
     version: str = "1.0.0"
+    category: str = Field(
+        default="general",
+        description="Catégorie (saas, messaging, storage, database, ai, devops, analytics, finance, general)",
+    )
     auth_type: str = Field(
-        default="none", description="Type d'auth (none, api_key, oauth2, basic)"
+        default="none", description="Type d'auth (none, api_key, oauth2, basic, custom)"
     )
     config_schema: list[ToolParameter] = Field(
         default_factory=list, description="Paramètres de configuration du connecteur"
@@ -280,6 +308,7 @@ class ConnectorMetadata(BaseModel):
     actions: list[ConnectorAction] = Field(
         default_factory=list, description="Actions disponibles"
     )
+    tags: list[str] = Field(default_factory=list, description="Tags pour la recherche")
 
 
 class ConnectorResult(BaseModel):
@@ -288,6 +317,9 @@ class ConnectorResult(BaseModel):
     success: bool = True
     data: dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    error_code: Optional[ConnectorErrorCode] = Field(
+        default=None, description="Code d'erreur standardisé"
+    )
 
 
 # =============================================================================

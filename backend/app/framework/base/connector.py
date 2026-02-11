@@ -41,7 +41,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from app.framework.schemas import ConnectorMetadata, ConnectorResult
+from app.framework.schemas import ConnectorErrorCode, ConnectorMetadata, ConnectorResult
 
 
 class BaseConnector(ABC):
@@ -139,3 +139,32 @@ class BaseConnector(ABC):
             True si l'action existe
         """
         return action in self.get_available_actions()
+
+    def success(self, data: dict[str, Any] | None = None) -> ConnectorResult:
+        """
+        Helper : retourne un résultat de succès.
+
+        Args:
+            data: Données de sortie
+
+        Returns:
+            ConnectorResult avec success=True
+        """
+        return ConnectorResult(success=True, data=data or {})
+
+    def error(
+        self,
+        message: str,
+        code: ConnectorErrorCode | None = None,
+    ) -> ConnectorResult:
+        """
+        Helper : retourne un résultat d'erreur.
+
+        Args:
+            message: Message d'erreur
+            code: Code d'erreur standardisé
+
+        Returns:
+            ConnectorResult avec success=False
+        """
+        return ConnectorResult(success=False, error=message, error_code=code)

@@ -57,6 +57,46 @@ class VaultService:
     def has_api_key(self, provider_slug: str) -> bool:
         return self.get_api_key(provider_slug) is not None
 
+    # --- Connector credentials ---
+
+    def store_connector_config(self, connector_slug: str, config: dict) -> bool:
+        """Stocke la configuration d'un connecteur dans Vault."""
+        try:
+            self.client.secrets.kv.v2.create_or_update_secret(
+                path=f"connectors/{connector_slug}",
+                secret=config,
+                mount_point=settings.VAULT_MOUNT_POINT,
+            )
+            return True
+        except Exception:
+            return False
+
+    def get_connector_config(self, connector_slug: str) -> Optional[dict]:
+        """Récupère la configuration d'un connecteur depuis Vault."""
+        try:
+            secret = self.client.secrets.kv.v2.read_secret_version(
+                path=f"connectors/{connector_slug}",
+                mount_point=settings.VAULT_MOUNT_POINT,
+            )
+            return secret["data"]["data"]
+        except Exception:
+            return None
+
+    def delete_connector_config(self, connector_slug: str) -> bool:
+        """Supprime la configuration d'un connecteur de Vault."""
+        try:
+            self.client.secrets.kv.v2.delete_metadata_and_all_versions(
+                path=f"connectors/{connector_slug}",
+                mount_point=settings.VAULT_MOUNT_POINT,
+            )
+            return True
+        except Exception:
+            return False
+
+    def has_connector_config(self, connector_slug: str) -> bool:
+        """Vérifie si un connecteur a une configuration dans Vault."""
+        return self.get_connector_config(connector_slug) is not None
+
 
 def get_vault_service() -> VaultService:
     return VaultService()
