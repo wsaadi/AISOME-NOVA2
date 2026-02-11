@@ -122,7 +122,8 @@
     "costPerTokenIn": "Cost per Token In",
     "costPerTokenOut": "Cost per Token Out",
     "effectiveDate": "Effective Date",
-    "model": "Model"
+    "model": "Model",
+    "provider": "Provider"
   },
   "moderation": {
     "title": "Moderation",
