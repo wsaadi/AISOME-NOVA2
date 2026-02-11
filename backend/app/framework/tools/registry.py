@@ -292,12 +292,15 @@ class ToolRegistry:
         Returns:
             Liste d'instances de BaseTool trouvées
         """
+        import sys as _sys
+
         module_name = f"app.framework.tools.{py_file.stem}"
         spec = importlib.util.spec_from_file_location(module_name, py_file)
         if not spec or not spec.loader:
             return []
 
         module = importlib.util.module_from_spec(spec)
+        _sys.modules[module_name] = module
         spec.loader.exec_module(module)
 
         tools = []
