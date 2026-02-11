@@ -122,7 +122,8 @@
     "costPerTokenIn": "Costo por Token Entrada",
     "costPerTokenOut": "Costo por Token Salida",
     "effectiveDate": "Fecha Efectiva",
-    "model": "Modelo"
+    "model": "Modelo",
+    "provider": "Proveedor"
   },
   "moderation": {
     "title": "Moderación",

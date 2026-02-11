@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Card, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, IconButton, alpha, useTheme, Tooltip, FormControl, InputLabel,
-  Select, MenuItem, ListSubheader,
+  Select, MenuItem,
 } from '@mui/material';
 import { Add, Edit, Delete } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
@@ -19,6 +19,7 @@ const CostsPage: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ model_id: '', cost_per_token_in: 0, cost_per_token_out: 0, effective_date: '' });
+  const [selectedProviderId, setSelectedProviderId] = useState('');
 
   const fetchCosts = useCallback(async () => {
     try { const res = await api.get('/api/costs'); setCosts(res.data); } catch {}
@@ -39,13 +40,24 @@ const CostsPage: React.FC = () => {
     return map;
   }, [providers]);
 
+  const selectedProviderModels = React.useMemo(() => {
+    const provider = providers.find((p: any) => p.id === selectedProviderId);
+    return provider?.models || [];
+  }, [providers, selectedProviderId]);
+
   const handleOpen = (cost?: any) => {
     if (cost) {
       setEditing(cost);
       setForm({ model_id: cost.model_id, cost_per_token_in: cost.cost_per_token_in, cost_per_token_out: cost.cost_per_token_out, effective_date: cost.effective_date });
+      const info = modelMap[cost.model_id];
+      if (info) {
+        const prov = providers.find((p: any) => p.name === info.provider);
+        if (prov) setSelectedProviderId(prov.id);
+      }
     } else {
       setEditing(null);
       setForm({ model_id: '', cost_per_token_in: 0, cost_per_token_out: 0, effective_date: new Date().toISOString().split('T')[0] });
+      setSelectedProviderId('');
     }
     setOpen(true);
   };
@@ -127,14 +139,35 @@ const CostsPage: React.FC = () => {
         <DialogTitle>{editing ? t('costs.edit') : t('costs.create')}</DialogTitle>
         <DialogContent>
           <FormControl fullWidth margin="normal" required disabled={!!editing}>
+            <InputLabel>{t('costs.provider')}</InputLabel>
+            <Select
+              value={selectedProviderId}
+              label={t('costs.provider')}
+              onChange={e => {
+                setSelectedProviderId(e.target.value as string);
+                setForm({ ...form, model_id: '' });
+              }}
+            >
+              {providers.map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth margin="normal" required disabled={!!editing || !selectedProviderId}>
             <InputLabel>{t('costs.model')}</InputLabel>
-            <Select value={form.model_id} label={t('costs.model')} onChange={e => setForm({ ...form, model_id: e.target.value as string })}>
-              {providers.map((p: any) => [
-                <ListSubheader key={`header-${p.id}`} sx={{ fontWeight: 700, bgcolor: alpha(theme.palette.primary.main, 0.04) }}>{p.name}</ListSubheader>,
-                ...(p.models || []).map((m: any) => (
-                  <MenuItem key={m.id} value={m.id}>{m.name} <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>({m.slug})</Typography></MenuItem>
-                )),
-              ])}
+            <Select
+              value={form.model_id}
+              label={t('costs.model')}
+              onChange={e => setForm({ ...form, model_id: e.target.value as string })}
+            >
+              {selectedProviderModels.map((m: any) => (
+                <MenuItem key={m.id} value={m.id}>
+                  <Box>
+                    <Typography variant="body2">{m.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">{m.slug}</Typography>
+                  </Box>
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
           <TextField fullWidth label={t('costs.costPerTokenIn')} type="number" value={form.cost_per_token_in} onChange={e => setForm({ ...form, cost_per_token_in: parseFloat(e.target.value) })} margin="normal" inputProps={{ step: 0.000001 }} />
