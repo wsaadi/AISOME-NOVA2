@@ -209,12 +209,20 @@ async def _run_agent(
         from app.services.consumption import ConsumptionService
         consumption_service = ConsumptionService(db)
 
+        vault_service = None
+        try:
+            from app.services.vault import VaultService
+            vault_service = VaultService()
+        except Exception:
+            logger.warning("VaultService unavailable in worker")
+
         engine = AgentEngine(
             db_session=db,
             tool_registry=tool_registry,
             connector_registry=connector_registry,
             session_manager=session_manager,
             consumption_service=consumption_service,
+            vault_service=vault_service,
         )
         engine.discover_agents()
 
@@ -283,12 +291,20 @@ async def _run_agent_stream(
         from app.services.consumption import ConsumptionService
         consumption_service = ConsumptionService(db)
 
+        vault_service = None
+        try:
+            from app.services.vault import VaultService
+            vault_service = VaultService()
+        except Exception:
+            logger.warning("VaultService unavailable in worker")
+
         engine = AgentEngine(
             db_session=db,
             tool_registry=tool_registry,
             connector_registry=connector_registry,
             session_manager=session_manager,
             consumption_service=consumption_service,
+            vault_service=vault_service,
         )
         engine.discover_agents()
 

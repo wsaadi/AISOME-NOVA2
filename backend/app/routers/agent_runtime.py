@@ -2,16 +2,25 @@
 Agent Runtime API — Endpoints d'exécution des agents.
 
 Endpoints:
-    POST /api/agent-runtime/{slug}/chat      — Envoyer un message (async job)
+    GET  /api/agent-runtime/catalog           — Catalogue des agents chargés
+    GET  /api/agent-runtime/jobs/{job_id}     — Statut d'un job
+    GET  /api/agent-runtime/sessions/{sid}    — Détail d'une session
+    GET  /api/agent-runtime/config/llm        — Liste configs LLM par agent
+    GET  /api/agent-runtime/config/llm/{slug} — Config LLM d'un agent
+    PUT  /api/agent-runtime/config/llm/{slug} — Définir config LLM d'un agent
+    DELETE /api/agent-runtime/config/llm/{slug} — Supprimer config LLM d'un agent
+    POST /api/agent-runtime/{slug}/chat       — Envoyer un message (async job)
     POST /api/agent-runtime/{slug}/chat/sync  — Envoyer un message (synchrone)
     GET  /api/agent-runtime/{slug}/sessions   — Lister les sessions
-    GET  /api/agent-runtime/sessions/{sid}    — Détail d'une session
-    GET  /api/agent-runtime/jobs/{job_id}     — Statut d'un job
-    GET  /api/agent-runtime/catalog           — Catalogue des agents chargés
+
+IMPORTANT: Les routes statiques (/catalog, /jobs, /sessions, /config)
+doivent être déclarées AVANT les routes paramétriques (/{slug}/*) pour
+éviter que FastAPI ne matche 'catalog' comme un slug.
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Optional
 
@@ -19,6 +28,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.middleware.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agent-runtime", tags=["Agent Runtime"])
 
@@ -108,120 +119,50 @@ class SessionListResponse(BaseModel):
 
 
 # =============================================================================
-# Endpoints
+# Static routes — MUST come before parametric /{slug}/* routes
 # =============================================================================
 
 
-@router.post("/{slug}/chat", response_model=ChatResponse)
-async def chat_async(
-    slug: str,
-    request: ChatRequest,
+@router.get("/catalog", response_model=list[AgentInfo])
+async def get_agent_catalog(
     current_user=Depends(get_current_user),
 ):
     """
-    Envoie un message à un agent — exécution asynchrone.
+    Retourne le catalogue des agents chargés.
 
-    Le message est mis en queue (Redis/Celery) et exécuté par un worker.
-    L'utilisateur reçoit un job_id pour suivre la progression via WebSocket.
-
-    Returns:
-        ChatResponse avec job_id et session_id
+    Liste tous les agents disponibles avec leurs métadonnées.
     """
-    job_id = str(uuid.uuid4())
-    session_id = request.session_id or str(uuid.uuid4())
-
-    try:
-        from app.tasks.agent_tasks import (
-            execute_agent_stream_task,
-            execute_agent_task,
-        )
-
-        task_fn = execute_agent_stream_task if request.stream else execute_agent_task
-
-        task_fn.delay(
-            job_id=job_id,
-            agent_slug=slug,
-            user_id=current_user.id,
-            session_id=session_id,
-            message_content=request.message,
-            message_metadata=request.metadata,
-        )
-
-        return ChatResponse(
-            job_id=job_id,
-            session_id=session_id,
-            status="pending",
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur de création du job: {str(e)}")
-
-
-@router.post("/{slug}/chat/sync", response_model=ChatSyncResponse)
-async def chat_sync(
-    slug: str,
-    request: ChatRequest,
-    current_user=Depends(get_current_user),
-):
-    """
-    Envoie un message à un agent — exécution synchrone.
-
-    Attend la réponse complète avant de retourner.
-    À utiliser pour les tests ou les agents rapides.
-
-    Returns:
-        ChatSyncResponse avec le contenu de la réponse
-    """
-    from app.database import async_session
-    from app.framework.connectors.registry import ConnectorRegistry
     from app.framework.runtime.engine import AgentEngine
+    from app.framework.connectors.registry import ConnectorRegistry
     from app.framework.runtime.session import SessionManager
-    from app.framework.schemas import UserMessage
     from app.framework.tools.registry import ToolRegistry
-
-    session_id = request.session_id or str(uuid.uuid4())
+    from app.database import async_session
 
     async with async_session() as db:
         tool_registry = ToolRegistry()
-        tool_registry.discover()
         connector_registry = ConnectorRegistry()
-        connector_registry.discover()
         session_manager = SessionManager(db)
-
-        from app.services.consumption import ConsumptionService
-        consumption_service = ConsumptionService(db)
 
         engine = AgentEngine(
             db_session=db,
             tool_registry=tool_registry,
             connector_registry=connector_registry,
             session_manager=session_manager,
-            consumption_service=consumption_service,
         )
         engine.discover_agents()
 
-        message = UserMessage(content=request.message, metadata=request.metadata)
-
-        result = await engine.execute(
-            agent_slug=slug,
-            message=message,
-            user=current_user,
-            session_id=session_id,
-        )
-
-        if not result.success:
-            raise HTTPException(
-                status_code=400,
-                detail={"error": result.error, "code": result.error_code},
+        return [
+            AgentInfo(
+                slug=m.slug,
+                name=m.name,
+                description=m.description,
+                version=m.version,
+                icon=m.icon,
+                category=m.category,
+                tags=m.tags,
             )
-
-        return ChatSyncResponse(
-            session_id=session_id,
-            content=result.response.content if result.response else "",
-            attachments=[a.model_dump() for a in result.response.attachments] if result.response else [],
-            metadata=result.response.metadata if result.response else {},
-            execution_time_ms=result.execution_time_ms,
-        )
+            for m in engine.list_agents()
+        ]
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
@@ -262,32 +203,6 @@ async def get_job_status(
     )
 
 
-@router.get("/{slug}/sessions", response_model=SessionListResponse)
-async def list_sessions(
-    slug: str,
-    limit: int = 50,
-    offset: int = 0,
-    current_user=Depends(get_current_user),
-):
-    """Liste les sessions d'un utilisateur pour un agent."""
-    from app.database import async_session
-    from app.framework.runtime.session import SessionManager
-
-    async with async_session() as db:
-        session_manager = SessionManager(db)
-        sessions = await session_manager.list_sessions(
-            agent_slug=slug,
-            user_id=current_user.id,
-            limit=limit,
-            offset=offset,
-        )
-
-        return SessionListResponse(
-            sessions=[s.model_dump() for s in sessions],
-            total=len(sessions),
-        )
-
-
 @router.get("/sessions/{session_id}")
 async def get_session(
     session_id: str,
@@ -310,50 +225,8 @@ async def get_session(
         return session.model_dump()
 
 
-@router.get("/catalog", response_model=list[AgentInfo])
-async def get_agent_catalog(
-    current_user=Depends(get_current_user),
-):
-    """
-    Retourne le catalogue des agents chargés.
-
-    Liste tous les agents disponibles avec leurs métadonnées.
-    """
-    from app.framework.runtime.engine import AgentEngine, AGENTS_ROOT
-    from app.framework.connectors.registry import ConnectorRegistry
-    from app.framework.runtime.session import SessionManager
-    from app.framework.tools.registry import ToolRegistry
-    from app.database import async_session
-
-    async with async_session() as db:
-        tool_registry = ToolRegistry()
-        connector_registry = ConnectorRegistry()
-        session_manager = SessionManager(db)
-
-        engine = AgentEngine(
-            db_session=db,
-            tool_registry=tool_registry,
-            connector_registry=connector_registry,
-            session_manager=session_manager,
-        )
-        engine.discover_agents()
-
-        return [
-            AgentInfo(
-                slug=m.slug,
-                name=m.name,
-                description=m.description,
-                version=m.version,
-                icon=m.icon,
-                category=m.category,
-                tags=m.tags,
-            )
-            for m in engine.list_agents()
-        ]
-
-
 # =============================================================================
-# Per-agent LLM Configuration
+# Per-agent LLM Configuration (static routes)
 # =============================================================================
 
 
@@ -473,3 +346,155 @@ async def delete_agent_llm_config(
             await db.delete(config)
             await db.commit()
         return {"ok": True}
+
+
+# =============================================================================
+# Parametric routes — /{slug}/* MUST come AFTER static routes
+# =============================================================================
+
+
+@router.post("/{slug}/chat", response_model=ChatResponse)
+async def chat_async(
+    slug: str,
+    request: ChatRequest,
+    current_user=Depends(get_current_user),
+):
+    """
+    Envoie un message à un agent — exécution asynchrone.
+
+    Le message est mis en queue (Redis/Celery) et exécuté par un worker.
+    L'utilisateur reçoit un job_id pour suivre la progression via WebSocket.
+
+    Returns:
+        ChatResponse avec job_id et session_id
+    """
+    job_id = str(uuid.uuid4())
+    session_id = request.session_id or str(uuid.uuid4())
+
+    try:
+        from app.tasks.agent_tasks import (
+            execute_agent_stream_task,
+            execute_agent_task,
+        )
+
+        task_fn = execute_agent_stream_task if request.stream else execute_agent_task
+
+        task_fn.delay(
+            job_id=job_id,
+            agent_slug=slug,
+            user_id=current_user.id,
+            session_id=session_id,
+            message_content=request.message,
+            message_metadata=request.metadata,
+        )
+
+        return ChatResponse(
+            job_id=job_id,
+            session_id=session_id,
+            status="pending",
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur de création du job: {str(e)}")
+
+
+@router.post("/{slug}/chat/sync", response_model=ChatSyncResponse)
+async def chat_sync(
+    slug: str,
+    request: ChatRequest,
+    current_user=Depends(get_current_user),
+):
+    """
+    Envoie un message à un agent — exécution synchrone.
+
+    Attend la réponse complète avant de retourner.
+    À utiliser pour les tests ou les agents rapides.
+
+    Returns:
+        ChatSyncResponse avec le contenu de la réponse
+    """
+    from app.database import async_session
+    from app.framework.connectors.registry import ConnectorRegistry
+    from app.framework.runtime.engine import AgentEngine
+    from app.framework.runtime.session import SessionManager
+    from app.framework.schemas import UserMessage
+    from app.framework.tools.registry import ToolRegistry
+
+    session_id = request.session_id or str(uuid.uuid4())
+
+    # Initialise le VaultService pour la récupération des clés API
+    vault_service = None
+    try:
+        from app.services.vault import VaultService
+        vault_service = VaultService()
+    except Exception as e:
+        logger.warning(f"VaultService unavailable, API keys won't be resolved: {e}")
+
+    async with async_session() as db:
+        tool_registry = ToolRegistry()
+        tool_registry.discover()
+        connector_registry = ConnectorRegistry()
+        connector_registry.discover()
+        session_manager = SessionManager(db)
+
+        from app.services.consumption import ConsumptionService
+        consumption_service = ConsumptionService(db)
+
+        engine = AgentEngine(
+            db_session=db,
+            tool_registry=tool_registry,
+            connector_registry=connector_registry,
+            session_manager=session_manager,
+            consumption_service=consumption_service,
+            vault_service=vault_service,
+        )
+        engine.discover_agents()
+
+        message = UserMessage(content=request.message, metadata=request.metadata)
+
+        result = await engine.execute(
+            agent_slug=slug,
+            message=message,
+            user=current_user,
+            session_id=session_id,
+        )
+
+        if not result.success:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": result.error, "code": result.error_code},
+            )
+
+        return ChatSyncResponse(
+            session_id=session_id,
+            content=result.response.content if result.response else "",
+            attachments=[a.model_dump() for a in result.response.attachments] if result.response else [],
+            metadata=result.response.metadata if result.response else {},
+            execution_time_ms=result.execution_time_ms,
+        )
+
+
+@router.get("/{slug}/sessions", response_model=SessionListResponse)
+async def list_sessions(
+    slug: str,
+    limit: int = 50,
+    offset: int = 0,
+    current_user=Depends(get_current_user),
+):
+    """Liste les sessions d'un utilisateur pour un agent."""
+    from app.database import async_session
+    from app.framework.runtime.session import SessionManager
+
+    async with async_session() as db:
+        session_manager = SessionManager(db)
+        sessions = await session_manager.list_sessions(
+            agent_slug=slug,
+            user_id=current_user.id,
+            limit=limit,
+            offset=offset,
+        )
+
+        return SessionListResponse(
+            sessions=[s.model_dump() for s in sessions],
+            total=len(sessions),
+        )

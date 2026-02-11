@@ -138,7 +138,7 @@ class AgentCreatorAgent(BaseAgent):
         context.set_progress(20, t("agent_creator.progress.loading_history", lang))
 
         # Get conversation history for continuity
-        history = await context.memory.get_history(limit=50)
+        history = await context.memory.get_history(limit=50) if context.memory else []
 
         # Build the full conversation for the LLM
         conversation = self._build_conversation(history, message)
@@ -167,18 +167,19 @@ class AgentCreatorAgent(BaseAgent):
             # Validate the generated files
             validation = self._validate_generated_files(files, lang)
 
-            # Store files in MinIO
+            # Store files in MinIO (if storage is available)
             slug = self._extract_slug_from_files(files)
             stored_files = {}
 
-            for filepath, content in files.items():
-                storage_key = f"generated/{slug}/{filepath}"
-                await context.storage.put(
-                    storage_key,
-                    content.encode("utf-8"),
-                    "text/plain",
-                )
-                stored_files[filepath] = storage_key
+            if context.storage:
+                for filepath, content in files.items():
+                    storage_key = f"generated/{slug}/{filepath}"
+                    await context.storage.put(
+                        storage_key,
+                        content.encode("utf-8"),
+                        "text/plain",
+                    )
+                    stored_files[filepath] = storage_key
 
             # Clean response: remove file markers but keep surrounding text
             clean_response = self._clean_response(llm_response)
@@ -224,7 +225,7 @@ class AgentCreatorAgent(BaseAgent):
             AgentResponseChunk avec les tokens progressifs
         """
         system_prompt = self._load_system_prompt()
-        history = await context.memory.get_history(limit=50)
+        history = await context.memory.get_history(limit=50) if context.memory else []
         conversation = self._build_conversation(history, message)
 
         accumulated = ""
@@ -239,7 +240,7 @@ class AgentCreatorAgent(BaseAgent):
 
         # After streaming completes, check for generated files
         files = self._extract_files(accumulated)
-        if files:
+        if files and context.storage:
             slug = self._extract_slug_from_files(files)
             for filepath, content in files.items():
                 storage_key = f"generated/{slug}/{filepath}"
