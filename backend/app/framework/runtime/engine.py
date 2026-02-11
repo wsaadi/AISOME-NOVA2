@@ -261,6 +261,16 @@ class AgentEngine:
                 agent_slug=agent_slug, user_id=user.id
             )
             session_id = session.session_id
+        else:
+            # Le frontend peut fournir un session_id custom ;
+            # s'il n'existe pas encore en base, on le crée.
+            existing = await self._session_manager.get_session(session_id)
+            if not existing:
+                await self._session_manager.create_session_with_id(
+                    session_id=session_id,
+                    agent_slug=agent_slug,
+                    user_id=user.id,
+                )
 
         # Construire le contexte (avec la langue préférée de l'utilisateur)
         user_lang = getattr(user, "preferred_language", "en") or "en"

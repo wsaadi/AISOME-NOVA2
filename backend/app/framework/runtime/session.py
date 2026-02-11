@@ -68,6 +68,38 @@ class SessionManager:
         )
         return session
 
+    async def create_session_with_id(
+        self, session_id: str, agent_slug: str, user_id: int, title: str = ""
+    ) -> SessionInfo:
+        """
+        Crée une session avec un ID prédéfini (fourni par le frontend).
+
+        Args:
+            session_id: ID de session imposé
+            agent_slug: Slug de l'agent
+            user_id: ID de l'utilisateur
+            title: Titre optionnel
+
+        Returns:
+            SessionInfo créée
+        """
+        session = SessionInfo(
+            session_id=session_id,
+            agent_slug=agent_slug,
+            user_id=user_id,
+            title=title or f"Session {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+        )
+
+        await self._persist_session(session)
+
+        if self._redis:
+            await self._cache_session(session)
+
+        logger.info(
+            f"Session created (custom id): {session_id} for agent={agent_slug} user={user_id}"
+        )
+        return session
+
     async def get_session(self, session_id: str) -> Optional[SessionInfo]:
         """
         Récupère une session par son ID.
