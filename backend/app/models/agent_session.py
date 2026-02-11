@@ -37,7 +37,7 @@ class AgentSessionMessage(Base):
     role = Column(String(50), nullable=False)
     content = Column(Text, nullable=False, default="")
     attachments = Column(Text, nullable=True, default="[]")
-    metadata = Column(Text, nullable=True, default="{}")
+    msg_metadata = Column("metadata", Text, nullable=True, default="{}")
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
 
     session = relationship("AgentSession", back_populates="messages")
