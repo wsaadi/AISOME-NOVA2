@@ -7,7 +7,7 @@
 
 import { useCallback, useState } from 'react';
 
-const API_BASE = process.env.REACT_APP_API_URL || '/api';
+const API_BASE = process.env.REACT_APP_API_URL || '';
 
 interface StorageFile {
   key: string;
@@ -55,7 +55,7 @@ export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
         if (path) formData.append('path', path);
 
         const response = await fetch(
-          `${API_BASE}/agent-runtime/${agentSlug}/storage/upload`,
+          `${API_BASE}/api/agent-runtime/${agentSlug}/storage/upload`,
           {
             method: 'POST',
             headers: getAuthHeaders(),
@@ -82,7 +82,7 @@ export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
   const download = useCallback(
     async (key: string): Promise<Blob> => {
       const response = await fetch(
-        `${API_BASE}/agent-runtime/${agentSlug}/storage/download?key=${encodeURIComponent(key)}`,
+        `${API_BASE}/api/agent-runtime/${agentSlug}/storage/download?key=${encodeURIComponent(key)}`,
         { headers: getAuthHeaders() }
       );
 
@@ -96,7 +96,7 @@ export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
     async (prefix?: string): Promise<StorageFile[]> => {
       const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
       const response = await fetch(
-        `${API_BASE}/agent-runtime/${agentSlug}/storage/list${params}`,
+        `${API_BASE}/api/agent-runtime/${agentSlug}/storage/list${params}`,
         { headers: getAuthHeaders() }
       );
 
@@ -109,7 +109,7 @@ export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
   const deleteFile = useCallback(
     async (key: string): Promise<boolean> => {
       const response = await fetch(
-        `${API_BASE}/agent-runtime/${agentSlug}/storage/delete`,
+        `${API_BASE}/api/agent-runtime/${agentSlug}/storage/delete`,
         {
           method: 'DELETE',
           headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
