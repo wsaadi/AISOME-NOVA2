@@ -26,6 +26,7 @@ from app.framework.schemas import (
     AgentResponseChunk,
     UserMessage,
 )
+from app.i18n.translations import t
 
 if TYPE_CHECKING:
     from app.framework.runtime.context import AgentContext
@@ -127,12 +128,14 @@ class AgentCreatorAgent(BaseAgent):
         Returns:
             AgentResponse avec le contenu conversationnel et les fichiers générés en metadata
         """
-        context.set_progress(10, "Loading system prompt...")
+        lang = context.lang
+
+        context.set_progress(10, t("agent_creator.progress.loading_prompt", lang))
 
         # Load the system prompt with all framework specs
         system_prompt = self._load_system_prompt()
 
-        context.set_progress(20, "Loading conversation history...")
+        context.set_progress(20, t("agent_creator.progress.loading_history", lang))
 
         # Get conversation history for continuity
         history = await context.memory.get_history(limit=50)
@@ -140,7 +143,7 @@ class AgentCreatorAgent(BaseAgent):
         # Build the full conversation for the LLM
         conversation = self._build_conversation(history, message)
 
-        context.set_progress(30, "Generating response...")
+        context.set_progress(30, t("agent_creator.progress.generating", lang))
 
         # Call LLM with comprehensive context
         llm_response = await context.llm.chat(
@@ -150,7 +153,7 @@ class AgentCreatorAgent(BaseAgent):
             max_tokens=16384,
         )
 
-        context.set_progress(70, "Processing response...")
+        context.set_progress(70, t("agent_creator.progress.processing", lang))
 
         # Extract any generated files from the response
         files = self._extract_files(llm_response)
@@ -159,10 +162,10 @@ class AgentCreatorAgent(BaseAgent):
         metadata: dict = {"phase": "conversation"}
 
         if files:
-            context.set_progress(80, "Validating generated code...")
+            context.set_progress(80, t("agent_creator.progress.validating", lang))
 
             # Validate the generated files
-            validation = self._validate_generated_files(files)
+            validation = self._validate_generated_files(files, lang)
 
             # Store files in MinIO
             slug = self._extract_slug_from_files(files)
@@ -190,12 +193,17 @@ class AgentCreatorAgent(BaseAgent):
 
             # Append validation feedback to response if there are issues
             if validation.get("warnings"):
-                warnings_text = "\n\n---\n**Validation warnings:**\n"
+                warnings_text = f"\n\n---\n**{t('agent_creator.val.validation_warnings', lang)}**\n"
                 for w in validation["warnings"]:
                     warnings_text += f"- {w}\n"
                 clean_response += warnings_text
 
-        context.set_progress(100, "Done")
+        context.set_progress(100, t("agent_creator.progress.done", lang))
+
+        # Include token usage in metadata for consumption tracking
+        usage = context.llm.last_usage
+        metadata["tokens_in"] = usage.get("tokens_in", 0)
+        metadata["tokens_out"] = usage.get("tokens_out", 0)
 
         return AgentResponse(content=clean_response, metadata=metadata)
 
@@ -354,7 +362,7 @@ class AgentCreatorAgent(BaseAgent):
                 pass
         return "unknown-agent"
 
-    def _validate_generated_files(self, files: dict[str, str]) -> dict:
+    def _validate_generated_files(self, files: dict[str, str], lang: str = "en") -> dict:
         """
         Valide les fichiers générés pour la conformité framework.
 
@@ -363,6 +371,7 @@ class AgentCreatorAgent(BaseAgent):
 
         Args:
             files: Dict {filepath: content} des fichiers générés
+            lang: Langue pour les messages de validation
 
         Returns:
             Dict avec 'valid': bool, 'errors': list, 'warnings': list
@@ -373,35 +382,35 @@ class AgentCreatorAgent(BaseAgent):
         # --- Validate manifest.json ---
         manifest_content = files.get("backend/manifest.json", "")
         if not manifest_content:
-            errors.append("Missing backend/manifest.json")
+            errors.append(t("agent_creator.val.missing_manifest", lang))
         else:
             try:
                 manifest = json.loads(manifest_content)
                 for field in ["name", "slug", "version", "description"]:
                     if field not in manifest:
-                        errors.append(f"manifest.json missing required field: {field}")
+                        errors.append(t("agent_creator.val.manifest_missing_field", lang, field=field))
                 slug = manifest.get("slug", "")
                 if slug and not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$", slug):
-                    errors.append(f"Invalid slug format: {slug}")
+                    errors.append(t("agent_creator.val.invalid_slug", lang, slug=slug))
             except json.JSONDecodeError as exc:
-                errors.append(f"manifest.json is not valid JSON: {exc}")
+                errors.append(t("agent_creator.val.manifest_invalid_json", lang, detail=str(exc)))
 
         # --- Validate agent.py ---
         agent_content = files.get("backend/agent.py", "")
         if not agent_content:
-            errors.append("Missing backend/agent.py")
+            errors.append(t("agent_creator.val.missing_agent", lang))
         else:
             if "BaseAgent" not in agent_content:
-                errors.append("agent.py must extend BaseAgent")
+                errors.append(t("agent_creator.val.no_base_agent", lang))
             if "handle_message" not in agent_content:
-                errors.append("agent.py must implement handle_message()")
+                errors.append(t("agent_creator.val.no_handle_message", lang))
             if '"""' not in agent_content and "'''" not in agent_content:
-                warnings.append("agent.py should have docstrings")
+                warnings.append(t("agent_creator.val.no_docstrings", lang))
 
             # Check forbidden imports
             for forbidden in FORBIDDEN_IMPORTS:
                 if forbidden in agent_content:
-                    errors.append(f"Forbidden import in agent.py: {forbidden}")
+                    errors.append(t("agent_creator.val.forbidden_import", lang, name=forbidden))
 
             # Check forbidden builtins
             for forbidden in FORBIDDEN_BUILTINS:
@@ -409,29 +418,29 @@ class AgentCreatorAgent(BaseAgent):
                 if forbidden == "open(" and agent_content.count("open(") <= 2:
                     continue
                 if forbidden in agent_content:
-                    errors.append(f"Forbidden builtin in agent.py: {forbidden}")
+                    errors.append(t("agent_creator.val.forbidden_builtin", lang, name=forbidden))
 
         # --- Validate system.md ---
         system_content = files.get("backend/prompts/system.md", "")
         if not system_content:
-            errors.append("Missing backend/prompts/system.md")
+            errors.append(t("agent_creator.val.missing_system_md", lang))
         elif len(system_content.strip()) < 50:
-            warnings.append("system.md seems too short — consider adding more instructions")
+            warnings.append(t("agent_creator.val.system_md_short", lang))
 
         # --- Validate frontend ---
         frontend_content = files.get("frontend/index.tsx", "")
         if not frontend_content:
-            errors.append("Missing frontend/index.tsx")
+            errors.append(t("agent_creator.val.missing_frontend", lang))
         else:
             if "export default" not in frontend_content:
-                errors.append("index.tsx must have a default export")
+                errors.append(t("agent_creator.val.no_default_export", lang))
             if "AgentViewProps" not in frontend_content:
-                errors.append("index.tsx must implement AgentViewProps")
+                errors.append(t("agent_creator.val.no_agent_view_props", lang))
 
             # Check forbidden frontend imports
             for forbidden in FORBIDDEN_FRONTEND_IMPORTS:
                 if forbidden in frontend_content:
-                    errors.append(f"Forbidden import in index.tsx: {forbidden}")
+                    errors.append(t("agent_creator.val.forbidden_frontend_import", lang, name=forbidden))
 
         return {
             "valid": len(errors) == 0,

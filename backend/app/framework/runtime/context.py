@@ -47,6 +47,20 @@ class LLMService:
         self._model_slug = model_slug
         self._api_key = api_key
         self._base_url = base_url
+        self._last_usage: dict[str, int] = {"tokens_in": 0, "tokens_out": 0}
+
+    @property
+    def provider_slug(self) -> str:
+        return self._provider_slug
+
+    @property
+    def model_slug(self) -> str:
+        return self._model_slug
+
+    @property
+    def last_usage(self) -> dict[str, int]:
+        """Token usage from the last chat/stream call."""
+        return dict(self._last_usage)
 
     async def chat(
         self,
@@ -94,6 +108,14 @@ class LLMService:
             )
             response.raise_for_status()
             data = response.json()
+
+            # Track token usage from API response
+            usage = data.get("usage", {})
+            self._last_usage = {
+                "tokens_in": usage.get("prompt_tokens", 0),
+                "tokens_out": usage.get("completion_tokens", 0),
+            }
+
             return data["choices"][0]["message"]["content"]
 
     async def stream(
@@ -148,6 +170,13 @@ class LLMService:
                         import json
 
                         chunk = json.loads(line[6:])
+                        # Capture usage from final chunk (some providers include it)
+                        usage = chunk.get("usage")
+                        if usage:
+                            self._last_usage = {
+                                "tokens_in": usage.get("prompt_tokens", 0),
+                                "tokens_out": usage.get("completion_tokens", 0),
+                            }
                         delta = chunk.get("choices", [{}])[0].get("delta", {})
                         content = delta.get("content", "")
                         if content:
@@ -392,6 +421,7 @@ class AgentContext:
     agents: AgentService
     storage: StorageService
     memory: MemoryService
+    lang: str = "en"
     _metadata: dict[str, Any] = field(default_factory=dict)
 
     def set_progress(self, percent: int, message: str = "") -> None:

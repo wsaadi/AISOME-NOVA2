@@ -174,6 +174,7 @@ class AgentEngine:
         agent_slug: str,
         user_id: int,
         session_id: str,
+        lang: str = "en",
     ) -> AgentContext:
         """
         Construit un AgentContext pour une exécution.
@@ -185,6 +186,7 @@ class AgentEngine:
             agent_slug: Slug de l'agent
             user_id: ID de l'utilisateur
             session_id: ID de la session
+            lang: Langue préférée de l'utilisateur (en, fr, es)
 
         Returns:
             AgentContext prêt à l'emploi
@@ -221,6 +223,7 @@ class AgentEngine:
             agents=agent_service,
             storage=storage_service,
             memory=memory_service,
+            lang=lang,
         )
 
     async def execute(
@@ -259,11 +262,13 @@ class AgentEngine:
             )
             session_id = session.session_id
 
-        # Construire le contexte
+        # Construire le contexte (avec la langue préférée de l'utilisateur)
+        user_lang = getattr(user, "preferred_language", "en") or "en"
         context = await self.build_context(
             agent_slug=agent_slug,
             user_id=user.id,
             session_id=session_id,
+            lang=user_lang,
         )
 
         # Sauvegarder le message utilisateur dans la session
@@ -320,27 +325,48 @@ class AgentEngine:
         """
         Récupère la configuration LLM pour un agent.
 
-        Cherche la config spécifique à l'agent, sinon utilise la config par défaut.
+        Cherche d'abord une config spécifique à l'agent (table agent_llm_configs),
+        sinon utilise la config par défaut (premier provider/model actif).
 
         Returns:
             Dict avec provider_slug, model_slug, api_key, base_url
         """
         from sqlalchemy import text
 
-        # Récupérer le premier provider actif avec un modèle actif
-        result = await self._db.execute(
+        # 1. Chercher une config spécifique à l'agent
+        agent_config_result = await self._db.execute(
             text(
                 """
                 SELECT p.slug as provider_slug, p.base_url, m.slug as model_slug
-                FROM llm_providers p
-                JOIN llm_models m ON m.provider_id = p.id
-                WHERE p.is_active = true AND m.is_active = true
-                ORDER BY p.id ASC, m.id ASC
+                FROM agent_llm_configs alc
+                JOIN llm_providers p ON p.id = alc.provider_id
+                JOIN llm_models m ON m.id = alc.model_id
+                WHERE alc.agent_slug = :agent_slug
+                  AND alc.is_active = true
+                  AND p.is_active = true
+                  AND m.is_active = true
                 LIMIT 1
                 """
-            )
+            ),
+            {"agent_slug": agent_slug},
         )
-        row = result.fetchone()
+        row = agent_config_result.fetchone()
+
+        # 2. Fallback: premier provider/model actif
+        if not row:
+            result = await self._db.execute(
+                text(
+                    """
+                    SELECT p.slug as provider_slug, p.base_url, m.slug as model_slug
+                    FROM llm_providers p
+                    JOIN llm_models m ON m.provider_id = p.id
+                    WHERE p.is_active = true AND m.is_active = true
+                    ORDER BY p.id ASC, m.id ASC
+                    LIMIT 1
+                    """
+                )
+            )
+            row = result.fetchone()
 
         if not row:
             return {

@@ -226,6 +226,19 @@
     "updateAvailable": "Update available",
     "pendingCommits": "Pending commits"
   },
+  "agentLlmConfig": {
+    "title": "Agent AI Configuration",
+    "description": "Configure which LLM provider and model each agent uses. Unconfigured agents use the platform default.",
+    "agent": "Agent",
+    "provider": "Provider",
+    "model": "Model",
+    "platformDefault": "Platform default",
+    "configured": "Configured",
+    "saved": "LLM configuration saved for {{agent}}",
+    "deleted": "LLM configuration removed for {{agent}} (using platform default)",
+    "reset": "Reset to default",
+    "noProviders": "No LLM providers configured. Go to LLM Configuration to add providers."
+  },
   "agentCreator": {
     "title": "Agent Creator",
     "description": "Create complete agents from natural language descriptions",

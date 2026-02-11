@@ -206,11 +206,15 @@ async def _run_agent(
         connector_registry.discover()
         session_manager = SessionManager(db)
 
+        from app.services.consumption import ConsumptionService
+        consumption_service = ConsumptionService(db)
+
         engine = AgentEngine(
             db_session=db,
             tool_registry=tool_registry,
             connector_registry=connector_registry,
             session_manager=session_manager,
+            consumption_service=consumption_service,
         )
         engine.discover_agents()
 
@@ -276,11 +280,15 @@ async def _run_agent_stream(
         connector_registry.discover()
         session_manager = SessionManager(db)
 
+        from app.services.consumption import ConsumptionService
+        consumption_service = ConsumptionService(db)
+
         engine = AgentEngine(
             db_session=db,
             tool_registry=tool_registry,
             connector_registry=connector_registry,
             session_manager=session_manager,
+            consumption_service=consumption_service,
         )
         engine.discover_agents()
 

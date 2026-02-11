@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AgentViewProps, ChatMessage } from 'framework/types';
 import { ChatPanel, MarkdownView, ActionButton } from 'framework/components';
 import { useAgent, useAgentStorage } from 'framework/hooks';
@@ -59,6 +60,7 @@ const extractFilesFromMessages = (
 };
 
 const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }) => {
+  const { t } = useTranslation();
   const {
     sendMessage,
     messages,
@@ -128,7 +130,7 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
       {/* Header */}
       <div style={styles.header}>
         <h3 style={styles.headerTitle}>
-          Agent Creator
+          {t('agentCreator.title')}
           {generated && (
             <span style={styles.headerBadge}>
               {generated.slug}
@@ -138,11 +140,11 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
         {hasFiles && (
           <div style={{ display: 'flex', gap: 8 }}>
             <ActionButton
-              label="Copy"
+              label={t('agentCreator.copy')}
               onClick={handleCopyFile}
             />
             <ActionButton
-              label="Download All"
+              label={t('agentCreator.download')}
               onClick={handleDownload}
             />
           </div>
@@ -175,7 +177,7 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
             onSendMessage={sendMessage}
             isLoading={isLoading}
             streamingContent={streamingContent}
-            placeholder="Describe the agent you want to create..."
+            placeholder={t('agentCreator.placeholder')}
           />
         </div>
 
@@ -199,12 +201,12 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
             <div style={styles.validationBar}>
               {isValid ? (
                 <span style={styles.validationSuccess}>
-                  Validation passed
+                  {t('agentCreator.validationPassed')}
                 </span>
               ) : (
                 <span style={styles.validationError}>
-                  {validationErrors.length} error(s)
-                  {validationWarnings.length > 0 && `, ${validationWarnings.length} warning(s)`}
+                  {validationErrors.length} {t('agentCreator.errors')}
+                  {validationWarnings.length > 0 && `, ${validationWarnings.length} ${t('agentCreator.warnings')}`}
                 </span>
               )}
             </div>
@@ -217,7 +219,7 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
                 />
               ) : (
                 <div style={styles.emptyFiles}>
-                  <span>Select a file to preview</span>
+                  <span>{t('agentCreator.selectFile')}</span>
                 </div>
               )}
             </div>

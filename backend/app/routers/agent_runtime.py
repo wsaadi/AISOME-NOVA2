@@ -79,6 +79,25 @@ class AgentInfo(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class AgentLLMConfigRequest(BaseModel):
+    """Requête de configuration LLM par agent."""
+
+    provider_id: str = Field(..., description="UUID du provider LLM")
+    model_id: str = Field(..., description="UUID du modèle LLM")
+
+
+class AgentLLMConfigResponse(BaseModel):
+    """Réponse de configuration LLM par agent."""
+
+    id: str
+    agent_slug: str
+    provider_id: str
+    model_id: str
+    provider_name: Optional[str] = None
+    model_name: Optional[str] = None
+    is_active: bool = True
+
+
 class SessionListResponse(BaseModel):
     """Liste des sessions."""
 
@@ -167,11 +186,15 @@ async def chat_sync(
         connector_registry.discover()
         session_manager = SessionManager(db)
 
+        from app.services.consumption import ConsumptionService
+        consumption_service = ConsumptionService(db)
+
         engine = AgentEngine(
             db_session=db,
             tool_registry=tool_registry,
             connector_registry=connector_registry,
             session_manager=session_manager,
+            consumption_service=consumption_service,
         )
         engine.discover_agents()
 
@@ -325,3 +348,126 @@ async def get_agent_catalog(
             )
             for m in engine.list_agents()
         ]
+
+
+# =============================================================================
+# Per-agent LLM Configuration
+# =============================================================================
+
+
+@router.get("/config/llm", response_model=list[AgentLLMConfigResponse])
+async def list_agent_llm_configs(
+    current_user=Depends(get_current_user),
+):
+    """Liste toutes les configurations LLM par agent."""
+    from sqlalchemy import select
+    from app.database import async_session
+    from app.models.agent_llm_config import AgentLLMConfig
+
+    async with async_session() as db:
+        result = await db.execute(select(AgentLLMConfig).where(AgentLLMConfig.is_active == True))
+        configs = result.scalars().all()
+        return [
+            AgentLLMConfigResponse(
+                id=str(c.id),
+                agent_slug=c.agent_slug,
+                provider_id=str(c.provider_id),
+                model_id=str(c.model_id),
+                provider_name=c.provider.name if c.provider else None,
+                model_name=c.model.name if c.model else None,
+                is_active=c.is_active,
+            )
+            for c in configs
+        ]
+
+
+@router.get("/config/llm/{agent_slug}", response_model=Optional[AgentLLMConfigResponse])
+async def get_agent_llm_config(
+    agent_slug: str,
+    current_user=Depends(get_current_user),
+):
+    """Récupère la config LLM pour un agent spécifique."""
+    from sqlalchemy import select
+    from app.database import async_session
+    from app.models.agent_llm_config import AgentLLMConfig
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(AgentLLMConfig).where(AgentLLMConfig.agent_slug == agent_slug)
+        )
+        config = result.scalar_one_or_none()
+        if not config:
+            return None
+        return AgentLLMConfigResponse(
+            id=str(config.id),
+            agent_slug=config.agent_slug,
+            provider_id=str(config.provider_id),
+            model_id=str(config.model_id),
+            provider_name=config.provider.name if config.provider else None,
+            model_name=config.model.name if config.model else None,
+            is_active=config.is_active,
+        )
+
+
+@router.put("/config/llm/{agent_slug}", response_model=AgentLLMConfigResponse)
+async def set_agent_llm_config(
+    agent_slug: str,
+    request: AgentLLMConfigRequest,
+    current_user=Depends(get_current_user),
+):
+    """Définit ou met à jour la config LLM pour un agent."""
+    from sqlalchemy import select
+    from app.database import async_session
+    from app.models.agent_llm_config import AgentLLMConfig
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(AgentLLMConfig).where(AgentLLMConfig.agent_slug == agent_slug)
+        )
+        config = result.scalar_one_or_none()
+
+        if config:
+            config.provider_id = request.provider_id
+            config.model_id = request.model_id
+            config.is_active = True
+        else:
+            config = AgentLLMConfig(
+                agent_slug=agent_slug,
+                provider_id=request.provider_id,
+                model_id=request.model_id,
+            )
+            db.add(config)
+
+        await db.commit()
+        await db.refresh(config)
+
+        return AgentLLMConfigResponse(
+            id=str(config.id),
+            agent_slug=config.agent_slug,
+            provider_id=str(config.provider_id),
+            model_id=str(config.model_id),
+            provider_name=config.provider.name if config.provider else None,
+            model_name=config.model.name if config.model else None,
+            is_active=config.is_active,
+        )
+
+
+@router.delete("/config/llm/{agent_slug}")
+async def delete_agent_llm_config(
+    agent_slug: str,
+    current_user=Depends(get_current_user),
+):
+    """Supprime la config LLM spécifique d'un agent (revient au défaut plateforme)."""
+    from sqlalchemy import select
+    from app.database import async_session
+    from app.models.agent_llm_config import AgentLLMConfig
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(AgentLLMConfig).where(AgentLLMConfig.agent_slug == agent_slug)
+        )
+        config = result.scalar_one_or_none()
+        if config:
+            await db.delete(config)
+            await db.commit()
+        return {"ok": True}

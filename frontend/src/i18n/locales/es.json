@@ -226,6 +226,19 @@
     "updateAvailable": "Actualización disponible",
     "pendingCommits": "Commits pendientes"
   },
+  "agentLlmConfig": {
+    "title": "Configuración IA de Agentes",
+    "description": "Configure el proveedor y modelo LLM que usa cada agente. Los agentes sin configurar usan el predeterminado de la plataforma.",
+    "agent": "Agente",
+    "provider": "Proveedor",
+    "model": "Modelo",
+    "platformDefault": "Predeterminado de plataforma",
+    "configured": "Configurado",
+    "saved": "Configuración LLM guardada para {{agent}}",
+    "deleted": "Configuración LLM eliminada para {{agent}} (usando predeterminado de plataforma)",
+    "reset": "Restablecer al predeterminado",
+    "noProviders": "No hay proveedores LLM configurados. Vaya a Configuración LLM para agregar proveedores."
+  },
   "agentCreator": {
     "title": "Creador de Agentes",
     "description": "Cree agentes completos a partir de descripciones en lenguaje natural",

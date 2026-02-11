@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import {
   Palette, Translate, Accessibility, People, Security, Settings as SettingsIcon,
-  Shield, CloudUpload, Delete, Image, Build,
+  Shield, CloudUpload, Delete, Image, Build, SmartToy,
 } from '@mui/icons-material';
 import i18n from '../i18n';
 import { useThemeContext } from '../contexts/ThemeContext';
@@ -17,6 +17,7 @@ import RolesPage from './RolesPage';
 import LLMConfigPage from './LLMConfigPage';
 import ModerationPage from './ModerationPage';
 import ToolsConfigPage from './ToolsConfigPage';
+import AgentLLMConfigPage from './AgentLLMConfigPage';
 import api from '../services/api';
 import { useSnackbar } from 'notistack';
 
@@ -277,6 +278,7 @@ const SettingsPage: React.FC = () => {
           <Tab icon={<SettingsIcon fontSize="small" />} iconPosition="start" label={t('llm.title')} />
           <Tab icon={<Shield fontSize="small" />} iconPosition="start" label={t('moderation.title')} />
           <Tab icon={<Build fontSize="small" />} iconPosition="start" label={t('tools.title')} />
+          <Tab icon={<SmartToy fontSize="small" />} iconPosition="start" label={t('agentLlmConfig.title')} />
           <Tab icon={<Image fontSize="small" />} iconPosition="start" label={t('settings.logo')} />
         </Tabs>
       </Box>
@@ -287,7 +289,8 @@ const SettingsPage: React.FC = () => {
       {tab === 3 && <LLMConfigPage />}
       {tab === 4 && <ModerationPage />}
       {tab === 5 && <ToolsConfigPage />}
-      {tab === 6 && <LogoTab />}
+      {tab === 6 && <AgentLLMConfigPage />}
+      {tab === 7 && <LogoTab />}
     </Box>
   );
 };
