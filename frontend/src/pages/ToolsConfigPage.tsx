@@ -377,8 +377,8 @@ const ToolsConfigPage: React.FC = () => {
     c.category.toLowerCase().includes(search.toLowerCase())
   );
 
-  const toolCategories = [...new Set(tools.map(t => t.category))].sort();
-  const connectorCategories = [...new Set(connectors.map(c => c.category))].sort();
+  const toolCategories = Array.from(new Set(tools.map(t => t.category))).sort();
+  const connectorCategories = Array.from(new Set(connectors.map(c => c.category))).sort();
 
   return (
     <Box>
