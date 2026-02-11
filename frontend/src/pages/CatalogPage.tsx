@@ -5,6 +5,7 @@ import {
   Chip, TextField, InputAdornment, alpha, useTheme, Avatar,
 } from '@mui/material';
 import { Search, SmartToy, OpenInNew, Psychology, Memory, AccountTree, Build } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
 const AGENT_TYPE_CONFIG: Record<string, { icon: React.ReactElement; gradient: string; color: string }> = {
@@ -17,6 +18,7 @@ const AGENT_TYPE_CONFIG: Record<string, { icon: React.ReactElement; gradient: st
 const CatalogPage: React.FC = () => {
   const { t } = useTranslation();
   const theme = useTheme();
+  const navigate = useNavigate();
   const [agents, setAgents] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -120,8 +122,15 @@ const CatalogPage: React.FC = () => {
                   </Typography>
                 </CardContent>
                 <CardActions sx={{ px: 2, pb: 2, pt: 0 }}>
-                  <Button size="small" variant="outlined" fullWidth endIcon={<OpenInNew sx={{ fontSize: '16px !important' }} />} sx={{ borderRadius: 2 }}>
-                    {t('common.edit')}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    fullWidth
+                    endIcon={<OpenInNew sx={{ fontSize: '16px !important' }} />}
+                    sx={{ borderRadius: 2 }}
+                    onClick={() => navigate(`/agent/${agent.slug}`)}
+                  >
+                    {t('agents.open') || 'Open'}
                   </Button>
                 </CardActions>
               </Card>

@@ -15,6 +15,7 @@
     "catalog": "Catalogue d'Agents",
     "catalogManagement": "Gestion du Catalogue",
     "settings": "Paramètres",
+    "agentCreator": "Créateur d'Agents",
     "system": "Mise à jour système",
     "logout": "Déconnexion"
   },
@@ -168,7 +169,9 @@
     "custom": "Personnalisé",
     "confirmDelete": "Êtes-vous sûr de vouloir supprimer cet agent ?",
     "newName": "Nouveau nom",
-    "newSlug": "Nouveau slug"
+    "newSlug": "Nouveau slug",
+    "open": "Ouvrir",
+    "notFound": "Agent introuvable"
   },
   "settings": {
     "title": "Paramètres",
