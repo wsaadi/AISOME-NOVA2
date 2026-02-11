@@ -83,7 +83,7 @@ class ExcelCrud(BaseTool):
                     input={"action": "read", "storage_key": "reports/ventes.xlsx"},
                     output={
                         "sheet_names": ["Janvier"],
-                        "sheets": [{"name": "Janvier", "headers": ["Produit"], "rows": [...]}],
+                        "sheets": [{"name": "Janvier", "headers": ["Produit"], "rows": [["Exemple"]]}],
                     },
                 ),
             ],
