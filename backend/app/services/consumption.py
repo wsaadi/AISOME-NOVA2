@@ -1,10 +1,121 @@
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, List
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, cast, Date
+from sqlalchemy import select, func, and_, cast, Date, text
 from app.models.consumption import Consumption
 from app.models.quota import Quota
+
+logger = logging.getLogger(__name__)
+
+
+class ConsumptionService:
+    """Service de logging de consommation utilisé par le pipeline d'exécution."""
+
+    def __init__(self, db: AsyncSession):
+        self._db = db
+
+    async def log(
+        self,
+        user_id: UUID,
+        agent_slug: str,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+    ) -> None:
+        """
+        Enregistre un usage de tokens en base.
+
+        Résout l'agent_slug vers l'agent_id, récupère le provider/model actifs,
+        calcule les coûts et crée un enregistrement Consumption.
+        """
+        if tokens_in == 0 and tokens_out == 0:
+            return
+
+        # Resolve agent_slug → agent_id
+        agent_id = None
+        try:
+            result = await self._db.execute(
+                text("SELECT id FROM agents WHERE slug = :slug LIMIT 1"),
+                {"slug": agent_slug},
+            )
+            row = result.fetchone()
+            if row:
+                agent_id = row[0]
+        except Exception:
+            pass
+
+        # Resolve active provider/model (with per-agent config fallback)
+        provider_id = None
+        model_id = None
+        cost_in = 0.0
+        cost_out = 0.0
+
+        try:
+            # Try agent-specific config first
+            result = await self._db.execute(
+                text("""
+                    SELECT alc.provider_id, alc.model_id
+                    FROM agent_llm_configs alc
+                    WHERE alc.agent_slug = :slug AND alc.is_active = true
+                    LIMIT 1
+                """),
+                {"slug": agent_slug},
+            )
+            row = result.fetchone()
+
+            if not row:
+                # Fallback to default
+                result = await self._db.execute(
+                    text("""
+                        SELECT p.id as provider_id, m.id as model_id
+                        FROM llm_providers p
+                        JOIN llm_models m ON m.provider_id = p.id
+                        WHERE p.is_active = true AND m.is_active = true
+                        ORDER BY p.id ASC, m.id ASC
+                        LIMIT 1
+                    """)
+                )
+                row = result.fetchone()
+
+            if row:
+                provider_id = row[0]
+                model_id = row[1]
+
+                # Lookup cost per token
+                cost_result = await self._db.execute(
+                    text("""
+                        SELECT cost_per_token_in, cost_per_token_out
+                        FROM model_costs
+                        WHERE model_id = :model_id
+                        ORDER BY effective_date DESC
+                        LIMIT 1
+                    """),
+                    {"model_id": model_id},
+                )
+                cost_row = cost_result.fetchone()
+                if cost_row:
+                    cost_in = tokens_in * (cost_row[0] or 0.0)
+                    cost_out = tokens_out * (cost_row[1] or 0.0)
+        except Exception as e:
+            logger.warning(f"Failed to resolve provider/model for consumption: {e}")
+
+        record = Consumption(
+            user_id=user_id,
+            agent_id=agent_id,
+            provider_id=provider_id,
+            model_id=model_id,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_in=cost_in,
+            cost_out=cost_out,
+        )
+        self._db.add(record)
+        try:
+            await self._db.commit()
+        except Exception as e:
+            logger.error(f"Failed to commit consumption record: {e}")
+            await self._db.rollback()
 
 
 async def get_consumption_data(
