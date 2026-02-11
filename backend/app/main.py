@@ -8,7 +8,7 @@ from app.models import *
 from app.models.user import User
 from app.models.role import Role, DEFAULT_PERMISSIONS
 from app.services.auth import hash_password
-from app.routers import auth, users, roles, llm_config, consumption, quotas, costs, moderation, agents, system
+from app.routers import auth, users, roles, llm_config, consumption, quotas, costs, moderation, agents, system, connectors_api
 
 settings = get_settings()
 
@@ -51,6 +51,15 @@ async def init_db():
             session.add(UserRoleModel(user_id=admin.id, role_id=admin_role.id))
             await session.commit()
 
+    # Auto-sync AI connectors to the DB
+    from app.services.connector_sync import sync_connectors_to_db
+    async with async_session() as session:
+        try:
+            await sync_connectors_to_db(session)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Connector sync on startup: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -82,6 +91,7 @@ app.include_router(costs.router)
 app.include_router(moderation.router)
 app.include_router(agents.router)
 app.include_router(system.router)
+app.include_router(connectors_api.router)
 
 
 @app.get("/api/health")

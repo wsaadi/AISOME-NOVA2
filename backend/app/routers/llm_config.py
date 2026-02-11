@@ -16,6 +16,17 @@ from app.models.user import User
 router = APIRouter(prefix="/api/llm", tags=["LLM Configuration"])
 
 
+@router.post("/sync")
+async def sync_from_connectors(
+    current_user: User = Depends(require_permission("llm_config", "write")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Synchronise les connecteurs AI du framework vers la DB (auto-discovery)."""
+    from app.services.connector_sync import sync_connectors_to_db
+    summary = await sync_connectors_to_db(db)
+    return summary
+
+
 @router.get("/providers", response_model=list[LLMProviderResponse])
 async def list_providers(
     current_user: User = Depends(require_permission("llm_config", "read")),

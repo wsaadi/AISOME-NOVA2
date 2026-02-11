@@ -5,7 +5,7 @@ import {
   Select, MenuItem, TextField, ToggleButton, ToggleButtonGroup, Table,
   TableBody, TableCell, TableContainer, TableHead, TableRow, alpha, useTheme,
   Tabs, Tab, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  IconButton, Chip, Tooltip,
+  IconButton, Chip, Tooltip, ListSubheader,
 } from '@mui/material';
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie,
@@ -231,6 +231,7 @@ const CostsTab: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   const theme = useTheme();
   const [costs, setCosts] = useState<any[]>([]);
+  const [providers, setProviders] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ model_id: '', cost_per_token_in: 0, cost_per_token_out: 0, effective_date: '' });
@@ -238,7 +239,21 @@ const CostsTab: React.FC = () => {
   const fetchCosts = useCallback(async () => {
     try { const res = await api.get('/api/costs'); setCosts(res.data); } catch {}
   }, []);
-  useEffect(() => { fetchCosts(); }, [fetchCosts]);
+  const fetchProviders = useCallback(async () => {
+    try { const res = await api.get('/api/llm/providers'); setProviders(res.data); } catch {}
+  }, []);
+  useEffect(() => { fetchCosts(); fetchProviders(); }, [fetchCosts, fetchProviders]);
+
+  // Build a map of model_id → display info
+  const modelMap = React.useMemo(() => {
+    const map: Record<string, { name: string; provider: string }> = {};
+    for (const p of providers) {
+      for (const m of (p.models || [])) {
+        map[m.id] = { name: m.name, provider: p.name };
+      }
+    }
+    return map;
+  }, [providers]);
 
   const handleOpen = (c?: any) => {
     if (c) { setEditing(c); setForm({ model_id: c.model_id, cost_per_token_in: c.cost_per_token_in, cost_per_token_out: c.cost_per_token_out, effective_date: c.effective_date }); }
@@ -253,6 +268,12 @@ const CostsTab: React.FC = () => {
   };
   const handleDelete = async (id: string) => {
     try { await api.delete(`/api/costs/${id}`); fetchCosts(); } catch {}
+  };
+
+  const renderModelName = (modelId: string) => {
+    const info = modelMap[modelId];
+    if (info) return <><Typography variant="body2" fontWeight={500}>{info.name}</Typography><Typography variant="caption" color="text.secondary">{info.provider}</Typography></>;
+    return <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8em' }}>{modelId}</Typography>;
   };
 
   return (
@@ -275,7 +296,7 @@ const CostsTab: React.FC = () => {
             <TableBody>
               {costs.map((c: any) => (
                 <TableRow key={c.id} hover>
-                  <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8em' }}>{c.model_id}</TableCell>
+                  <TableCell>{renderModelName(c.model_id)}</TableCell>
                   <TableCell><Typography variant="body2" fontWeight={500} sx={{ fontFamily: 'monospace' }}>${c.cost_per_token_in?.toFixed(8)}</Typography></TableCell>
                   <TableCell><Typography variant="body2" fontWeight={500} sx={{ fontFamily: 'monospace' }}>${c.cost_per_token_out?.toFixed(8)}</Typography></TableCell>
                   <TableCell>{c.effective_date}</TableCell>
@@ -292,7 +313,17 @@ const CostsTab: React.FC = () => {
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? t('costs.edit') : t('costs.create')}</DialogTitle>
         <DialogContent>
-          <TextField fullWidth label="Model ID (UUID)" value={form.model_id} onChange={e => setForm({ ...form, model_id: e.target.value })} margin="normal" required disabled={!!editing} />
+          <FormControl fullWidth margin="normal" required disabled={!!editing}>
+            <InputLabel>{t('costs.model')}</InputLabel>
+            <Select value={form.model_id} label={t('costs.model')} onChange={e => setForm({ ...form, model_id: e.target.value })}>
+              {providers.map((p: any) => [
+                <ListSubheader key={`header-${p.id}`} sx={{ fontWeight: 700, bgcolor: alpha(theme.palette.primary.main, 0.04) }}>{p.name}</ListSubheader>,
+                ...(p.models || []).map((m: any) => (
+                  <MenuItem key={m.id} value={m.id}>{m.name} <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>({m.slug})</Typography></MenuItem>
+                )),
+              ])}
+            </Select>
+          </FormControl>
           <TextField fullWidth label={t('costs.costPerTokenIn')} type="number" value={form.cost_per_token_in} onChange={e => setForm({ ...form, cost_per_token_in: parseFloat(e.target.value) })} margin="normal" inputProps={{ step: 0.000001 }} />
           <TextField fullWidth label={t('costs.costPerTokenOut')} type="number" value={form.cost_per_token_out} onChange={e => setForm({ ...form, cost_per_token_out: parseFloat(e.target.value) })} margin="normal" inputProps={{ step: 0.000001 }} />
           <TextField fullWidth label={t('costs.effectiveDate')} type="date" value={form.effective_date} onChange={e => setForm({ ...form, effective_date: e.target.value })} margin="normal" InputLabelProps={{ shrink: true }} />
