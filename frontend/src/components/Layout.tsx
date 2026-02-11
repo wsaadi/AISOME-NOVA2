@@ -10,6 +10,7 @@ import {
   Menu as MenuIcon, Dashboard, SmartToy, Assessment, SystemUpdate,
   Brightness4, Brightness7, ManageAccounts, Inventory, Logout,
   ChevronLeft, ChevronRight, Edit as EditIcon, Check, Close,
+  AutoFixHigh,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useThemeContext } from '../contexts/ThemeContext';
@@ -79,6 +80,7 @@ const Layout: React.FC = () => {
     { path: '/dashboard', icon: <Dashboard />, label: t('nav.dashboard'), show: true },
     { divider: true, show: true },
     { path: '/catalog', icon: <SmartToy />, label: t('nav.catalog'), show: true },
+    { path: '/agent/agent-creator', icon: <AutoFixHigh />, label: t('nav.agentCreator'), show: true },
     { path: '/catalog/manage', icon: <Inventory />, label: t('nav.catalogManagement'), show: hasPermission('catalog_management', 'read') },
     { divider: true, show: true },
     { path: '/consumption', icon: <Assessment />, label: t('nav.consumption'), show: hasPermission('consumption', 'read') },
@@ -329,7 +331,7 @@ const Layout: React.FC = () => {
           )}
           <Box sx={{ flexGrow: 1 }}>
             <Typography variant="body1" fontWeight={600} color="text.primary">
-              {menuItems.find(i => i.path === location.pathname)?.label || t('app.subtitle')}
+              {menuItems.find(i => i.path === location.pathname || (i.path && location.pathname.startsWith(i.path + '/')))?.label || t('app.subtitle')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {t('app.subtitle')}

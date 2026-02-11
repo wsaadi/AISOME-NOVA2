@@ -11,6 +11,7 @@ import CatalogPage from './pages/CatalogPage';
 import CatalogManagementPage from './pages/CatalogManagementPage';
 import SettingsPage from './pages/SettingsPage';
 import SystemPage from './pages/SystemPage';
+import AgentRuntimePage from './pages/AgentRuntimePage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -28,6 +29,7 @@ const AppRoutes: React.FC = () => (
       <Route path="consumption" element={<ConsumptionPage />} />
       <Route path="catalog" element={<CatalogPage />} />
       <Route path="catalog/manage" element={<CatalogManagementPage />} />
+      <Route path="agent/:slug" element={<AgentRuntimePage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="system" element={<SystemPage />} />
     </Route>
