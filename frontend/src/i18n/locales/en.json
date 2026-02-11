@@ -197,6 +197,23 @@
     "logoPreview": "Preview",
     "noLogo": "No logo uploaded"
   },
+  "tools": {
+    "title": "Tools & Connectors",
+    "tools": "Tools",
+    "connectors": "Connectors",
+    "schema": "Schema",
+    "inputParams": "Input Parameters",
+    "outputParams": "Output Parameters",
+    "examples": "Examples",
+    "actions": "Actions",
+    "connected": "Connected",
+    "configured": "Configured",
+    "enabled": "{{name}} enabled",
+    "disabled": "{{name}} disabled",
+    "refresh": "Refresh catalog",
+    "noToolsFound": "No tools found. Tools are auto-discovered on backend startup.",
+    "noConnectorsFound": "No connectors found. Connectors are auto-discovered on backend startup."
+  },
   "system": {
     "title": "System",
     "currentVersion": "Current Version",

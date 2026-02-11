@@ -197,6 +197,23 @@
     "logoPreview": "Aperçu",
     "noLogo": "Aucun logo téléchargé"
   },
+  "tools": {
+    "title": "Tools & Connecteurs",
+    "tools": "Tools",
+    "connectors": "Connecteurs",
+    "schema": "Schéma",
+    "inputParams": "Paramètres d'entrée",
+    "outputParams": "Paramètres de sortie",
+    "examples": "Exemples",
+    "actions": "Actions",
+    "connected": "Connecté",
+    "configured": "Configuré",
+    "enabled": "{{name}} activé",
+    "disabled": "{{name}} désactivé",
+    "refresh": "Rafraîchir le catalogue",
+    "noToolsFound": "Aucun tool trouvé. Les tools sont découverts automatiquement au démarrage du backend.",
+    "noConnectorsFound": "Aucun connecteur trouvé. Les connecteurs sont découverts automatiquement au démarrage du backend."
+  },
   "system": {
     "title": "Système",
     "currentVersion": "Version actuelle",

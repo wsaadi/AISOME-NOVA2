@@ -197,6 +197,23 @@
     "logoPreview": "Vista previa",
     "noLogo": "No se ha subido ningún logo"
   },
+  "tools": {
+    "title": "Tools y Conectores",
+    "tools": "Tools",
+    "connectors": "Conectores",
+    "schema": "Esquema",
+    "inputParams": "Parámetros de entrada",
+    "outputParams": "Parámetros de salida",
+    "examples": "Ejemplos",
+    "actions": "Acciones",
+    "connected": "Conectado",
+    "configured": "Configurado",
+    "enabled": "{{name}} activado",
+    "disabled": "{{name}} desactivado",
+    "refresh": "Actualizar catálogo",
+    "noToolsFound": "No se encontraron tools. Los tools se descubren automáticamente al iniciar el backend.",
+    "noConnectorsFound": "No se encontraron conectores. Los conectores se descubren automáticamente al iniciar el backend."
+  },
   "system": {
     "title": "Sistema",
     "currentVersion": "Versión Actual",

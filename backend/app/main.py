@@ -8,7 +8,7 @@ from app.models import *
 from app.models.user import User
 from app.models.role import Role, DEFAULT_PERMISSIONS
 from app.services.auth import hash_password
-from app.routers import auth, users, roles, llm_config, consumption, quotas, costs, moderation, agents, system, connectors_api
+from app.routers import auth, users, roles, llm_config, consumption, quotas, costs, moderation, agents, system, connectors_api, tools_api
 
 settings = get_settings()
 
@@ -92,6 +92,7 @@ app.include_router(moderation.router)
 app.include_router(agents.router)
 app.include_router(system.router)
 app.include_router(connectors_api.router)
+app.include_router(tools_api.router)
 
 
 @app.get("/api/health")
