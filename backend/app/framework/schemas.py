@@ -332,7 +332,7 @@ class JobInfo(BaseModel):
 
     job_id: str
     agent_slug: str
-    user_id: int
+    user_id: Any
     session_id: str
     status: JobStatus = JobStatus.PENDING
     progress: int = Field(default=0, ge=0, le=100)
@@ -359,7 +359,7 @@ class SessionInfo(BaseModel):
 
     session_id: str
     agent_slug: str
-    user_id: int
+    user_id: Any
     title: str = ""
     messages: list[SessionMessage] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
