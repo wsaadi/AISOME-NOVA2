@@ -240,7 +240,7 @@ class SessionManager:
             {
                 "session_id": session.session_id,
                 "agent_slug": session.agent_slug,
-                "user_id": session.user_id,
+                "user_id": str(session.user_id),
                 "title": session.title,
                 "is_active": session.is_active,
                 "created_at": session.created_at,
