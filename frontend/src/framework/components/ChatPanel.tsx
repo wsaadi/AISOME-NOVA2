@@ -9,7 +9,7 @@
  * - Support des pièces jointes (optionnel)
  *
  * Usage dans un agent:
- *   import { ChatPanel } from '@framework/components';
+ *   import { ChatPanel } from 'framework/components';
  *
  *   <ChatPanel
  *     messages={messages}
@@ -29,7 +29,7 @@ import {
   Typography,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
-import { ChatMessage } from '@framework/types';
+import { ChatMessage } from 'framework/types';
 import { MarkdownView } from './MarkdownView';
 
 interface ChatPanelProps {

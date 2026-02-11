@@ -5,7 +5,7 @@
  * pour configurer le comportement d'un agent.
  *
  * Usage:
- *   import { SettingsPanel } from '@framework/components';
+ *   import { SettingsPanel } from 'framework/components';
  *   <SettingsPanel
  *     settings={[
  *       { key: 'temperature', label: 'Température', type: 'slider', min: 0, max: 1, step: 0.1 },

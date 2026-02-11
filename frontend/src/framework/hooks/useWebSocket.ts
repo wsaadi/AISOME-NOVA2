@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WebSocketMessage } from '@framework/types';
+import { WebSocketMessage } from 'framework/types';
 
 interface UseWebSocketOptions {
   /** URL du WebSocket (défaut: auto-détecté) */

@@ -1,7 +1,7 @@
 /**
  * Framework Hooks — Barrel export.
  *
- * Tout agent importe depuis '@framework/hooks'.
+ * Tout agent importe depuis 'framework/hooks'.
  */
 
 export { useAgent } from './useAgent';

@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { ChatMessage, JobInfo, StreamChunk } from '@framework/types';
+import { ChatMessage, JobInfo, StreamChunk } from 'framework/types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
 

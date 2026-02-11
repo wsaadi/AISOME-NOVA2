@@ -1,7 +1,7 @@
 /**
  * Framework Components — Barrel export.
  *
- * Tout agent importe depuis '@framework/components'.
+ * Tout agent importe depuis 'framework/components'.
  * INTERDIT: importer directement MUI, Recharts ou autre lib externe.
  */
 

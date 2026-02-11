@@ -2,7 +2,7 @@
  * FileUpload — Composant d'upload de fichiers pour les agents.
  *
  * Usage:
- *   import { FileUpload } from '@framework/components';
+ *   import { FileUpload } from 'framework/components';
  *   <FileUpload onUpload={(file) => handleFile(file)} accept=".pdf,.docx" />
  */
 

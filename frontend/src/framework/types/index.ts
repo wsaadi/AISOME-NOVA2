@@ -2,7 +2,7 @@
  * Framework Types — Types TypeScript partagés par tous les agents.
  *
  * Ces types sont le miroir côté frontend des schemas Pydantic backend.
- * Tout agent importe uniquement depuis @framework/types.
+ * Tout agent importe uniquement depuis 'framework/types'.
  */
 
 // =============================================================================
