@@ -2,38 +2,17 @@
  * Agent Creator View — Interface for creating NOVA2 agents via natural language.
  *
  * Layout:
- * - Split view: Chat on the left, generated files preview on the right
- * - When no files are generated yet, chat takes full width
- * - File tabs allow switching between generated files
- * - Validation status shown in the files panel
- * - Action buttons for deployment
+ * - Full-width chat
+ * - When files are generated, a download bar appears to download the ZIP archive
+ * - Validation status shown inline
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentViewProps, ChatMessage } from 'framework/types';
-import { ChatPanel, MarkdownView, ActionButton } from 'framework/components';
-import { useAgent, useAgentStorage } from 'framework/hooks';
+import { ChatPanel, ActionButton } from 'framework/components';
+import { useAgent } from 'framework/hooks';
 import styles from './styles';
-
-/**
- * Maps file paths to display-friendly short names.
- */
-const getFileLabel = (filepath: string): string => {
-  const parts = filepath.split('/');
-  return parts[parts.length - 1];
-};
-
-/**
- * Detects the language for syntax highlighting from file extension.
- */
-const getLanguage = (filepath: string): string => {
-  if (filepath.endsWith('.json')) return 'json';
-  if (filepath.endsWith('.py')) return 'python';
-  if (filepath.endsWith('.md')) return 'markdown';
-  if (filepath.endsWith('.tsx') || filepath.endsWith('.ts')) return 'typescript';
-  return 'text';
-};
 
 /**
  * Extracts generated files from the most recent assistant message metadata.
@@ -59,6 +38,85 @@ const extractFilesFromMessages = (
   return null;
 };
 
+/**
+ * Builds a ZIP file in-browser from a record of filepath→content entries
+ * using the standard ZIP format (no external library needed).
+ */
+const buildZip = (files: Record<string, string>): Blob => {
+  const encoder = new TextEncoder();
+  const entries: { name: Uint8Array; data: Uint8Array; offset: number }[] = [];
+  const parts: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const [filepath, content] of Object.entries(files)) {
+    const nameBytes = encoder.encode(filepath);
+    const dataBytes = encoder.encode(content);
+
+    // Local file header
+    const header = new ArrayBuffer(30);
+    const view = new DataView(header);
+    view.setUint32(0, 0x04034b50, true); // signature
+    view.setUint16(4, 20, true);         // version needed
+    view.setUint16(6, 0, true);          // flags
+    view.setUint16(8, 0, true);          // compression: stored
+    view.setUint16(10, 0, true);         // mod time
+    view.setUint16(12, 0, true);         // mod date
+    view.setUint32(14, 0, true);         // crc-32 (0 for stored)
+    view.setUint32(18, dataBytes.length, true); // compressed size
+    view.setUint32(22, dataBytes.length, true); // uncompressed size
+    view.setUint16(26, nameBytes.length, true); // name length
+    view.setUint16(28, 0, true);         // extra field length
+
+    const headerArr = new Uint8Array(header);
+    parts.push(headerArr, nameBytes, dataBytes);
+    entries.push({ name: nameBytes, data: dataBytes, offset });
+    offset += headerArr.length + nameBytes.length + dataBytes.length;
+  }
+
+  // Central directory
+  const cdStart = offset;
+  for (const entry of entries) {
+    const cd = new ArrayBuffer(46);
+    const cdv = new DataView(cd);
+    cdv.setUint32(0, 0x02014b50, true);  // central dir signature
+    cdv.setUint16(4, 20, true);          // version made by
+    cdv.setUint16(6, 20, true);          // version needed
+    cdv.setUint16(8, 0, true);           // flags
+    cdv.setUint16(10, 0, true);          // compression
+    cdv.setUint16(12, 0, true);          // mod time
+    cdv.setUint16(14, 0, true);          // mod date
+    cdv.setUint32(16, 0, true);          // crc-32
+    cdv.setUint32(20, entry.data.length, true);
+    cdv.setUint32(24, entry.data.length, true);
+    cdv.setUint16(28, entry.name.length, true);
+    cdv.setUint16(30, 0, true);          // extra length
+    cdv.setUint16(32, 0, true);          // comment length
+    cdv.setUint16(34, 0, true);          // disk number start
+    cdv.setUint16(36, 0, true);          // internal attributes
+    cdv.setUint32(38, 0, true);          // external attributes
+    cdv.setUint32(42, entry.offset, true);
+
+    const cdArr = new Uint8Array(cd);
+    parts.push(cdArr, entry.name);
+    offset += cdArr.length + entry.name.length;
+  }
+
+  // End of central directory
+  const eocd = new ArrayBuffer(22);
+  const ev = new DataView(eocd);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(4, 0, true);
+  ev.setUint16(6, 0, true);
+  ev.setUint16(8, entries.length, true);
+  ev.setUint16(10, entries.length, true);
+  ev.setUint32(12, offset - cdStart, true);
+  ev.setUint32(16, cdStart, true);
+  ev.setUint16(20, 0, true);
+  parts.push(new Uint8Array(eocd));
+
+  return new Blob(parts, { type: 'application/zip' });
+};
+
 const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }) => {
   const { t } = useTranslation();
   const {
@@ -71,59 +129,30 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
     error,
   } = useAgent(agent.slug, sessionId);
 
-  const { download } = useAgentStorage(agent.slug);
-
-  const [activeFileTab, setActiveFileTab] = useState<string>('');
-
   // Extract generated files from conversation
   const generated = useMemo(() => extractFilesFromMessages(messages), [messages]);
-
-  const fileKeys = useMemo(() => {
-    if (!generated) return [];
-    return Object.keys(generated.files);
-  }, [generated]);
-
-  // Auto-select first file tab when files appear
-  const currentTab = useMemo(() => {
-    if (activeFileTab && fileKeys.includes(activeFileTab)) return activeFileTab;
-    return fileKeys.length > 0 ? fileKeys[0] : '';
-  }, [activeFileTab, fileKeys]);
-
-  const hasFiles = fileKeys.length > 0;
-
-  /**
-   * Handle downloading all generated files as individual downloads.
-   */
-  const handleDownload = useCallback(async () => {
-    if (!generated) return;
-    for (const [filepath, content] of Object.entries(generated.files)) {
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = getFileLabel(filepath);
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-  }, [generated]);
-
-  /**
-   * Copy current file content to clipboard.
-   */
-  const handleCopyFile = useCallback(() => {
-    if (!generated || !currentTab) return;
-    const content = generated.files[currentTab];
-    if (content) {
-      navigator.clipboard.writeText(content);
-    }
-  }, [generated, currentTab]);
+  const hasFiles = generated !== null && Object.keys(generated.files).length > 0;
 
   const validation = generated?.validation || {};
   const isValid = validation.valid === true;
   const validationErrors = (validation.errors as string[]) || [];
   const validationWarnings = (validation.warnings as string[]) || [];
+
+  /**
+   * Download all generated files as a single ZIP archive.
+   */
+  const handleDownloadZip = useCallback(() => {
+    if (!generated) return;
+    const blob = buildZip(generated.files);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${generated.slug}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [generated]);
 
   return (
     <div style={styles.container}>
@@ -137,18 +166,6 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
             </span>
           )}
         </h3>
-        {hasFiles && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <ActionButton
-              label={t('agentCreator.copy')}
-              onClick={handleCopyFile}
-            />
-            <ActionButton
-              label={t('agentCreator.download')}
-              onClick={handleDownload}
-            />
-          </div>
-        )}
       </div>
 
       {/* Progress bar */}
@@ -168,10 +185,32 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
         </div>
       )}
 
-      {/* Main body: chat + files */}
+      {/* Download bar when files are generated */}
+      {hasFiles && generated && (
+        <div style={styles.downloadBar}>
+          <div style={styles.downloadInfo}>
+            <span style={styles.downloadLabel}>
+              {Object.keys(generated.files).length} {t('agentCreator.filesGenerated')}
+            </span>
+            {isValid ? (
+              <span style={styles.validationSuccess}>{t('agentCreator.validationPassed')}</span>
+            ) : (
+              <span style={styles.validationError}>
+                {validationErrors.length} {t('agentCreator.errors')}
+                {validationWarnings.length > 0 && `, ${validationWarnings.length} ${t('agentCreator.warnings')}`}
+              </span>
+            )}
+          </div>
+          <ActionButton
+            label={t('agentCreator.downloadZip')}
+            onClick={handleDownloadZip}
+          />
+        </div>
+      )}
+
+      {/* Chat — always full width */}
       <div style={styles.body}>
-        {/* Chat panel */}
-        <div style={hasFiles ? styles.chatPanelWithFiles : styles.chatPanel}>
+        <div style={styles.chatPanel}>
           <ChatPanel
             messages={messages}
             onSendMessage={sendMessage}
@@ -180,51 +219,6 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId, userId }
             placeholder={t('agentCreator.placeholder')}
           />
         </div>
-
-        {/* Generated files panel */}
-        {hasFiles && generated && (
-          <div style={styles.filesPanel}>
-            {/* File tabs */}
-            <div style={styles.filesTabs}>
-              {fileKeys.map((filepath) => (
-                <button
-                  key={filepath}
-                  style={filepath === currentTab ? styles.fileTabActive : styles.fileTab}
-                  onClick={() => setActiveFileTab(filepath)}
-                >
-                  {getFileLabel(filepath)}
-                </button>
-              ))}
-            </div>
-
-            {/* Validation status */}
-            <div style={styles.validationBar}>
-              {isValid ? (
-                <span style={styles.validationSuccess}>
-                  {t('agentCreator.validationPassed')}
-                </span>
-              ) : (
-                <span style={styles.validationError}>
-                  {validationErrors.length} {t('agentCreator.errors')}
-                  {validationWarnings.length > 0 && `, ${validationWarnings.length} ${t('agentCreator.warnings')}`}
-                </span>
-              )}
-            </div>
-
-            {/* File content */}
-            <div style={styles.fileContent}>
-              {currentTab && generated.files[currentTab] ? (
-                <MarkdownView
-                  content={`\`\`\`${getLanguage(currentTab)}\n${generated.files[currentTab]}\n\`\`\``}
-                />
-              ) : (
-                <div style={styles.emptyFiles}>
-                  <span>{t('agentCreator.selectFile')}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

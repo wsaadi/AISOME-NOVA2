@@ -1,9 +1,7 @@
 /**
  * Styles for Agent Creator view.
  *
- * Split-panel layout:
- * - Left: Chat conversation
- * - Right: Generated files preview (appears after generation)
+ * Full-width chat with a download bar when files are generated.
  */
 
 const styles = {
@@ -51,109 +49,32 @@ const styles = {
     flexDirection: 'column' as const,
     overflow: 'hidden' as const,
   },
-  chatPanelWithFiles: {
-    flex: '0 0 50%',
-    minWidth: 0,
-    display: 'flex' as const,
-    flexDirection: 'column' as const,
-    overflow: 'hidden' as const,
-    borderRight: '1px solid var(--divider-color, #e0e0e0)',
-  },
-  filesPanel: {
-    flex: '0 0 50%',
-    minWidth: 0,
-    display: 'flex' as const,
-    flexDirection: 'column' as const,
-    overflow: 'hidden' as const,
-  },
-  filesTabs: {
-    display: 'flex' as const,
-    flexWrap: 'wrap' as const,
-    gap: 4,
-    padding: '8px 12px',
-    borderBottom: '1px solid var(--divider-color, #e0e0e0)',
-    backgroundColor: 'var(--surface-bg, #fafafa)',
-    overflowX: 'auto' as const,
-  },
-  fileTab: {
-    padding: '4px 12px',
-    border: '1px solid var(--divider-color, #e0e0e0)',
-    borderRadius: 4,
-    cursor: 'pointer' as const,
-    fontSize: 12,
-    fontFamily: 'monospace',
-    backgroundColor: 'transparent',
-    color: 'inherit',
-    whiteSpace: 'nowrap' as const,
-    transition: 'background-color 0.15s',
-  },
-  fileTabActive: {
-    padding: '4px 12px',
-    border: '1px solid var(--primary-color, #1976d2)',
-    borderRadius: 4,
-    cursor: 'pointer' as const,
-    fontSize: 12,
-    fontFamily: 'monospace',
-    backgroundColor: 'var(--primary-bg, #e3f2fd)',
-    color: 'var(--primary-color, #1976d2)',
-    fontWeight: 600,
-    whiteSpace: 'nowrap' as const,
-  },
-  fileContent: {
-    flex: 1,
-    overflow: 'auto' as const,
-    padding: 16,
-  },
-  codeBlock: {
-    fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-    fontSize: 13,
-    lineHeight: 1.5,
-    whiteSpace: 'pre-wrap' as const,
-    wordBreak: 'break-word' as const,
-    backgroundColor: 'var(--code-bg, #f5f5f5)',
-    padding: 16,
-    borderRadius: 8,
-    border: '1px solid var(--divider-color, #e0e0e0)',
-    overflow: 'auto' as const,
-    margin: 0,
-  },
-  validationBar: {
+  downloadBar: {
     display: 'flex' as const,
     alignItems: 'center' as const,
-    gap: 8,
-    padding: '8px 16px',
+    justifyContent: 'space-between' as const,
+    padding: '10px 16px',
+    borderBottom: '1px solid var(--divider-color, #e0e0e0)',
+    backgroundColor: 'var(--surface-bg, #fafafa)',
+  },
+  downloadInfo: {
+    display: 'flex' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+  },
+  downloadLabel: {
     fontSize: 13,
+    fontWeight: 500,
   },
   validationSuccess: {
     color: 'var(--success-color, #2e7d32)',
+    fontSize: 12,
     fontWeight: 500,
   },
   validationError: {
     color: 'var(--error-color, #d32f2f)',
+    fontSize: 12,
     fontWeight: 500,
-  },
-  footer: {
-    display: 'flex' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'flex-end' as const,
-    gap: 8,
-    padding: '8px 16px',
-    borderTop: '1px solid var(--divider-color, #e0e0e0)',
-  },
-  emptyFiles: {
-    display: 'flex' as const,
-    flexDirection: 'column' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    height: '100%',
-    color: 'var(--text-secondary, #666)',
-    gap: 8,
-    padding: 32,
-    textAlign: 'center' as const,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    opacity: 0.4,
   },
   progressBar: {
     display: 'flex' as const,

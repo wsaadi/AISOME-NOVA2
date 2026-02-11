@@ -254,7 +254,8 @@
     "deploy": "Desplegar",
     "selectFile": "Seleccione un archivo para previsualizar",
     "noFiles": "Aún no se han generado archivos",
-    "filesGenerated": "archivos generados"
+    "filesGenerated": "archivos generados",
+    "downloadZip": "Descargar ZIP"
   },
   "common": {
     "save": "Guardar",
