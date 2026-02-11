@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChatMessage, JobInfo, StreamChunk } from 'framework/types';
 
-const API_BASE = process.env.REACT_APP_API_URL || '/api';
+const API_BASE = process.env.REACT_APP_API_URL || '';
 
 interface UseAgentOptions {
   /** Mode synchrone (attend la réponse) ou async (job en background) */
@@ -85,7 +85,7 @@ export function useAgent(
         if (mode === 'sync') {
           // Appel synchrone — attend la réponse complète
           const response = await fetch(
-            `${API_BASE}/agent-runtime/${agentSlug}/chat/sync`,
+            `${API_BASE}/api/agent-runtime/${agentSlug}/chat/sync`,
             {
               method: 'POST',
               headers: getAuthHeaders(),
@@ -115,7 +115,7 @@ export function useAgent(
         } else {
           // Appel async — crée un job
           const response = await fetch(
-            `${API_BASE}/agent-runtime/${agentSlug}/chat`,
+            `${API_BASE}/api/agent-runtime/${agentSlug}/chat`,
             {
               method: 'POST',
               headers: getAuthHeaders(),
@@ -151,7 +151,7 @@ export function useAgent(
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      const response = await fetch(`${API_BASE}/agent-runtime/jobs/${jobId}`, {
+      const response = await fetch(`${API_BASE}/api/agent-runtime/jobs/${jobId}`, {
         headers: getAuthHeaders(),
       });
 
@@ -188,7 +188,7 @@ export function useAgent(
   const loadSession = useCallback(
     async (sid: string) => {
       try {
-        const response = await fetch(`${API_BASE}/agent-runtime/sessions/${sid}`, {
+        const response = await fetch(`${API_BASE}/api/agent-runtime/sessions/${sid}`, {
           headers: getAuthHeaders(),
         });
 
