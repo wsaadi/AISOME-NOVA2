@@ -66,7 +66,12 @@
     "apiKeySet": "API key is configured",
     "apiKeyNotSet": "No API key configured",
     "baseUrl": "Base URL",
-    "slug": "Slug"
+    "slug": "Slug",
+    "syncConnectors": "Sync Connectors",
+    "syncTooltip": "Discover AI connectors and sync their providers and models to the database",
+    "syncSuccess": "Synced {{providers}} provider(s) and {{models}} model(s)",
+    "syncUpToDate": "Already up to date — no new connectors found",
+    "emptyState": "No LLM providers configured yet. Click Sync Connectors to auto-discover available AI providers and their models."
   },
   "consumption": {
     "title": "Consumption",

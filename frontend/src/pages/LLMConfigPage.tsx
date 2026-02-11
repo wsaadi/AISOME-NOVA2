@@ -5,8 +5,9 @@ import {
   TextField, Card, CardContent, CardActions, Grid, Chip, IconButton,
   Accordion, AccordionSummary, AccordionDetails, Switch, FormControlLabel, List,
   ListItem, ListItemText, ListItemSecondaryAction, alpha, useTheme, Avatar, Tooltip,
+  CircularProgress, Alert,
 } from '@mui/material';
-import { Add, Edit, Delete, VpnKey, ExpandMore, CheckCircle, Cancel, Cloud } from '@mui/icons-material';
+import { Add, Edit, Delete, VpnKey, ExpandMore, CheckCircle, Cancel, Cloud, Sync } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import api from '../services/api';
 
@@ -19,6 +20,8 @@ const PROVIDER_COLORS = [
   'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)',
   'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)',
   'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)',
+  'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
+  'linear-gradient(135deg, #0891B2 0%, #06B6D4 100%)',
 ];
 
 const LLMConfigPage: React.FC = () => {
@@ -34,12 +37,30 @@ const LLMConfigPage: React.FC = () => {
   const [providerForm, setProviderForm] = useState({ name: '', slug: '', base_url: '', is_active: true });
   const [modelForm, setModelForm] = useState({ name: '', slug: '', is_active: true });
   const [apiKey, setApiKey] = useState('');
+  const [syncing, setSyncing] = useState(false);
 
   const fetchProviders = useCallback(async () => {
     try { const res = await api.get('/api/llm/providers'); setProviders(res.data); } catch {}
   }, []);
 
   useEffect(() => { fetchProviders(); }, [fetchProviders]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.post('/api/llm/sync');
+      const { providers_created, models_created } = res.data;
+      if (providers_created > 0 || models_created > 0) {
+        enqueueSnackbar(t('llm.syncSuccess', { providers: providers_created, models: models_created }), { variant: 'success' });
+      } else {
+        enqueueSnackbar(t('llm.syncUpToDate'), { variant: 'info' });
+      }
+      fetchProviders();
+    } catch (e: any) {
+      enqueueSnackbar(e.response?.data?.detail || t('common.error'), { variant: 'error' });
+    }
+    setSyncing(false);
+  };
 
   const openProviderDialog = (provider?: Provider) => {
     if (provider) {
@@ -100,13 +121,39 @@ const LLMConfigPage: React.FC = () => {
         <Box>
           <Typography variant="h4" fontWeight={700}>{t('llm.title')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {providers.length} provider{providers.length !== 1 ? 's' : ''}
+            {providers.length} provider{providers.length !== 1 ? 's' : ''} &middot; {providers.reduce((acc, p) => acc + p.models.length, 0)} {t('llm.models').toLowerCase()}
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={() => openProviderDialog()} sx={{ px: 3 }}>
-          {t('llm.addProvider')}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Tooltip title={t('llm.syncTooltip')}>
+            <Button
+              variant="outlined"
+              startIcon={syncing ? <CircularProgress size={18} /> : <Sync />}
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              {t('llm.syncConnectors')}
+            </Button>
+          </Tooltip>
+          <Button variant="contained" startIcon={<Add />} onClick={() => openProviderDialog()} sx={{ px: 3 }}>
+            {t('llm.addProvider')}
+          </Button>
+        </Box>
       </Box>
+
+      {providers.length === 0 && (
+        <Alert
+          severity="info"
+          sx={{ mb: 3, borderRadius: 2 }}
+          action={
+            <Button size="small" variant="outlined" onClick={handleSync} disabled={syncing} startIcon={syncing ? <CircularProgress size={16} /> : <Sync />}>
+              {t('llm.syncConnectors')}
+            </Button>
+          }
+        >
+          {t('llm.emptyState')}
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         {providers.map((provider, index) => (

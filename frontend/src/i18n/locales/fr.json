@@ -66,7 +66,12 @@
     "apiKeySet": "Clé API configurée",
     "apiKeyNotSet": "Aucune clé API configurée",
     "baseUrl": "URL de base",
-    "slug": "Slug"
+    "slug": "Slug",
+    "syncConnectors": "Synchroniser",
+    "syncTooltip": "Découvrir les connecteurs AI et synchroniser leurs fournisseurs et modèles en base",
+    "syncSuccess": "{{providers}} fournisseur(s) et {{models}} modèle(s) synchronisés",
+    "syncUpToDate": "Déjà à jour — aucun nouveau connecteur trouvé",
+    "emptyState": "Aucun fournisseur LLM configuré. Cliquez sur Synchroniser pour découvrir automatiquement les fournisseurs AI disponibles et leurs modèles."
   },
   "consumption": {
     "title": "Consommations",
