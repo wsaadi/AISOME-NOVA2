@@ -5,6 +5,8 @@ from datetime import datetime, date
 
 
 class ModelCostCreate(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     model_id: UUID
     cost_per_token_in: float
     cost_per_token_out: float
@@ -18,12 +20,11 @@ class ModelCostUpdate(BaseModel):
 
 
 class ModelCostResponse(BaseModel):
+    model_config = {"protected_namespaces": (), "from_attributes": True}
+
     id: UUID
     model_id: UUID
     cost_per_token_in: float
     cost_per_token_out: float
     effective_date: date
     created_at: datetime
-
-    class Config:
-        from_attributes = True

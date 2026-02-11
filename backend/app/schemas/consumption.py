@@ -5,6 +5,8 @@ from datetime import datetime
 
 
 class ConsumptionCreate(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     user_id: Optional[UUID] = None
     agent_id: Optional[UUID] = None
     provider_id: Optional[UUID] = None
@@ -17,6 +19,8 @@ class ConsumptionCreate(BaseModel):
 
 
 class ConsumptionResponse(BaseModel):
+    model_config = {"protected_namespaces": (), "from_attributes": True}
+
     id: UUID
     user_id: Optional[UUID]
     agent_id: Optional[UUID]
@@ -29,11 +33,10 @@ class ConsumptionResponse(BaseModel):
     session_id: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ConsumptionFilter(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     user_id: Optional[UUID] = None
     agent_id: Optional[UUID] = None
     provider_id: Optional[UUID] = None

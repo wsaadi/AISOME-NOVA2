@@ -81,6 +81,7 @@ class AgentInfo(BaseModel):
 
 class AgentLLMConfigRequest(BaseModel):
     """Requête de configuration LLM par agent."""
+    model_config = {"protected_namespaces": ()}
 
     provider_id: str = Field(..., description="UUID du provider LLM")
     model_id: str = Field(..., description="UUID du modèle LLM")
@@ -88,6 +89,7 @@ class AgentLLMConfigRequest(BaseModel):
 
 class AgentLLMConfigResponse(BaseModel):
     """Réponse de configuration LLM par agent."""
+    model_config = {"protected_namespaces": ()}
 
     id: str
     agent_slug: str
