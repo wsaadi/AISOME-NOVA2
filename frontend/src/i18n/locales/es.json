@@ -223,6 +223,23 @@
     "updateAvailable": "Actualización disponible",
     "pendingCommits": "Commits pendientes"
   },
+  "agentCreator": {
+    "title": "Creador de Agentes",
+    "description": "Cree agentes completos a partir de descripciones en lenguaje natural",
+    "placeholder": "Describa el agente que desea crear...",
+    "generating": "Generando agente...",
+    "validating": "Validando código generado...",
+    "validationPassed": "Validación exitosa",
+    "validationFailed": "Validación fallida",
+    "errors": "error(es)",
+    "warnings": "advertencia(s)",
+    "download": "Descargar todo",
+    "copy": "Copiar",
+    "deploy": "Desplegar",
+    "selectFile": "Seleccione un archivo para previsualizar",
+    "noFiles": "Aún no se han generado archivos",
+    "filesGenerated": "archivos generados"
+  },
   "common": {
     "save": "Guardar",
     "cancel": "Cancelar",

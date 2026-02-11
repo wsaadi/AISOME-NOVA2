@@ -1,0 +1,19 @@
+{
+  "name": "Agent Creator",
+  "slug": "agent-creator",
+  "version": "1.0.0",
+  "description": "Creates complete NOVA2 agents from natural language descriptions — interactive, multilingual, framework-compliant",
+  "author": "AISOME",
+  "icon": "auto_fix_high",
+  "category": "development",
+  "tags": ["creator", "generator", "development", "no-code", "ai"],
+  "dependencies": {
+    "tools": ["json-crud"],
+    "connectors": []
+  },
+  "triggers": [
+    {"type": "user_message", "config": {}}
+  ],
+  "capabilities": ["streaming", "file_upload"],
+  "min_platform_version": "1.0.0"
+}
