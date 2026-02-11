@@ -430,47 +430,56 @@ async def chat_sync(
     except Exception as e:
         logger.warning(f"VaultService unavailable, API keys won't be resolved: {e}")
 
-    async with async_session() as db:
-        tool_registry = ToolRegistry()
-        tool_registry.discover()
-        connector_registry = ConnectorRegistry()
-        connector_registry.discover()
-        session_manager = SessionManager(db)
+    try:
+        async with async_session() as db:
+            tool_registry = ToolRegistry()
+            tool_registry.discover()
+            connector_registry = ConnectorRegistry()
+            connector_registry.discover()
+            session_manager = SessionManager(db)
 
-        from app.services.consumption import ConsumptionService
-        consumption_service = ConsumptionService(db)
+            from app.services.consumption import ConsumptionService
+            consumption_service = ConsumptionService(db)
 
-        engine = AgentEngine(
-            db_session=db,
-            tool_registry=tool_registry,
-            connector_registry=connector_registry,
-            session_manager=session_manager,
-            consumption_service=consumption_service,
-            vault_service=vault_service,
-        )
-        engine.discover_agents()
+            engine = AgentEngine(
+                db_session=db,
+                tool_registry=tool_registry,
+                connector_registry=connector_registry,
+                session_manager=session_manager,
+                consumption_service=consumption_service,
+                vault_service=vault_service,
+            )
+            engine.discover_agents()
 
-        message = UserMessage(content=request.message, metadata=request.metadata)
+            message = UserMessage(content=request.message, metadata=request.metadata)
 
-        result = await engine.execute(
-            agent_slug=slug,
-            message=message,
-            user=current_user,
-            session_id=session_id,
-        )
-
-        if not result.success:
-            raise HTTPException(
-                status_code=400,
-                detail={"error": result.error, "code": result.error_code},
+            result = await engine.execute(
+                agent_slug=slug,
+                message=message,
+                user=current_user,
+                session_id=session_id,
             )
 
-        return ChatSyncResponse(
-            session_id=session_id,
-            content=result.response.content if result.response else "",
-            attachments=[a.model_dump() for a in result.response.attachments] if result.response else [],
-            metadata=result.response.metadata if result.response else {},
-            execution_time_ms=result.execution_time_ms,
+            if not result.success:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": result.error, "code": result.error_code},
+                )
+
+            return ChatSyncResponse(
+                session_id=session_id,
+                content=result.response.content if result.response else "",
+                attachments=[a.model_dump() for a in result.response.attachments] if result.response else [],
+                metadata=result.response.metadata if result.response else {},
+                execution_time_ms=result.execution_time_ms,
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Unhandled error in chat_sync for agent '{slug}': {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": str(e), "code": "INTERNAL_ERROR"},
         )
 
 

@@ -1,6 +1,8 @@
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from app.config import get_settings
 from app.database import engine, Base, async_session
@@ -10,6 +12,7 @@ from app.models.role import Role, DEFAULT_PERMISSIONS
 from app.services.auth import hash_password
 from app.routers import auth, users, roles, llm_config, consumption, quotas, costs, moderation, agents, system, connectors_api, tools_api, agent_runtime
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
@@ -80,6 +83,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all handler ensuring unhandled exceptions return a proper JSON
+    response that passes through the CORS middleware (headers are added
+    automatically because the response is produced *inside* the ASGI app,
+    not by the server-error fallback).
+    """
+    logger.exception(f"Unhandled exception on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": {"error": str(exc), "code": "INTERNAL_ERROR"}},
+    )
+
 
 app.include_router(auth.router)
 app.include_router(users.router)
