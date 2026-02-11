@@ -15,7 +15,9 @@ Architecture:
 
 from celery import Celery
 
-from app.config import settings
+from app.config import get_settings
+
+settings = get_settings()
 
 # Configuration Celery
 celery_app = Celery(

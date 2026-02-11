@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 def get_redis_client():
     """Retourne un client Redis pour pub/sub."""
-    from app.config import settings
+    from app.config import get_settings
+    settings = get_settings()
 
     return redis.Redis(
         host=settings.REDIS_HOST,
