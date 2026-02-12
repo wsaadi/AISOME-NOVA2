@@ -312,6 +312,22 @@ async def _run_agent_stream(
         if not agent:
             return {"success": False, "error": f"Agent '{agent_slug}' not found"}
 
+        # Ensure session exists (like engine.execute does)
+        existing = await session_manager.get_session(session_id)
+        if not existing:
+            await session_manager.create_session_with_id(
+                session_id=session_id,
+                agent_slug=agent_slug,
+                user_id=user_id,
+            )
+
+        # Save user message BEFORE streaming (like engine.execute does)
+        await session_manager.add_message(
+            session_id=session_id,
+            role="user",
+            content=message_content,
+        )
+
         context = await engine.build_context(agent_slug, user_id, session_id)
         message = UserMessage(content=message_content, metadata=message_metadata)
 
@@ -319,5 +335,13 @@ async def _run_agent_stream(
         async for chunk in agent.handle_message_stream(message, context):
             full_content += chunk.content
             publish_stream_chunk(job_id, chunk.content, chunk.is_final)
+
+        # Save assistant response AFTER streaming (like engine.execute does)
+        if full_content:
+            await session_manager.add_message(
+                session_id=session_id,
+                role="assistant",
+                content=full_content,
+            )
 
         return {"success": True, "content": full_content}
