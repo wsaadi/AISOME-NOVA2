@@ -84,10 +84,13 @@ const CatalogManagementPage: React.FC = () => {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      await api.post('/api/agents/import', formData, { headers: { 'Content-Type': undefined } });
+      await api.post('/api/agents/import', formData);
       fetchAgents();
       enqueueSnackbar(t('common.success'), { variant: 'success' });
-    } catch (e: any) { enqueueSnackbar(t('common.error'), { variant: 'error' }); }
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail || t('common.error');
+      enqueueSnackbar(typeof detail === 'string' ? detail : JSON.stringify(detail), { variant: 'error' });
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
