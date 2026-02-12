@@ -84,7 +84,7 @@ const CatalogManagementPage: React.FC = () => {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      await api.post('/api/agents/import', formData);
+      await api.post('/api/agents/import', formData, { headers: { 'Content-Type': undefined } });
       fetchAgents();
       enqueueSnackbar(t('common.success'), { variant: 'success' });
     } catch (e: any) { enqueueSnackbar(t('common.error'), { variant: 'error' }); }
