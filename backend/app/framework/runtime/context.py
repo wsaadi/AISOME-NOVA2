@@ -124,7 +124,9 @@ class LLMService:
             payload["system"] = system_prompt
 
         llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
-        async with httpx.AsyncClient(timeout=llm_timeout) as client:
+        async with httpx.AsyncClient(
+            timeout=llm_timeout, http2=True,
+        ) as client:
             try:
                 response = await client.post(url, headers=headers, json=payload)
             except httpx.ReadTimeout:
@@ -186,7 +188,9 @@ class LLMService:
             payload["system"] = system_prompt
 
         llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
-        async with httpx.AsyncClient(timeout=llm_timeout) as client:
+        async with httpx.AsyncClient(
+            timeout=llm_timeout, http2=True,
+        ) as client:
             async with client.stream(
                 "POST", f"{self._base_url}/v1/messages",
                 headers=headers, json=payload,

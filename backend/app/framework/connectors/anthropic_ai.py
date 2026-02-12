@@ -100,6 +100,7 @@ class AnthropicConnector(BaseConnector):
                 "Content-Type": "application/json",
             },
             timeout=120.0,
+            http2=True,
         )
 
     async def execute(self, action: str, params: dict[str, Any]) -> ConnectorResult:
