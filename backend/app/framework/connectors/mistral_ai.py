@@ -104,18 +104,10 @@ class MistralConnector(BaseConnector):
         )
 
     async def connect(self, config: dict[str, Any]) -> None:
-        """Initialise le client HTTP Mistral."""
-        import httpx
+        """Initialise le client Mistral via le SDK officiel."""
+        from mistralai import Mistral
 
-        self._base_url = config.get("base_url", "https://api.mistral.ai/v1")
-        self._client = httpx.AsyncClient(
-            base_url=self._base_url,
-            headers={
-                "Authorization": f"Bearer {config['api_key']}",
-                "Content-Type": "application/json",
-            },
-            timeout=120.0,
-        )
+        self._client = Mistral(api_key=config["api_key"])
 
     async def execute(self, action: str, params: dict[str, Any]) -> ConnectorResult:
         if action == "list_models":
@@ -127,15 +119,14 @@ class MistralConnector(BaseConnector):
         return self.error(f"Action inconnue: {action}", ConnectorErrorCode.INVALID_ACTION)
 
     async def disconnect(self) -> None:
-        """Ferme le client HTTP."""
-        if hasattr(self, "_client"):
-            await self._client.aclose()
+        """Ferme le client Mistral."""
+        self._client = None
 
     async def health_check(self) -> bool:
         """Vérifie l'accès à l'API Mistral."""
         try:
-            resp = await self._client.get("/models")
-            return resp.status_code == 200
+            await self._client.models.list_async()
+            return True
         except Exception:
             return False
 
@@ -159,34 +150,30 @@ class MistralConnector(BaseConnector):
         if not messages:
             return self.error("messages requis", ConnectorErrorCode.INVALID_PARAMS)
 
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-
         try:
-            resp = await self._client.post("/chat/completions", json=payload)
-            if resp.status_code == 401:
-                return self.error("API key Mistral invalide", ConnectorErrorCode.AUTH_FAILED)
-            if resp.status_code == 429:
-                return self.error("Rate limit Mistral", ConnectorErrorCode.RATE_LIMITED)
-            if resp.status_code != 200:
-                return self.error(
-                    f"Mistral API {resp.status_code}: {resp.text[:300]}",
-                    ConnectorErrorCode.EXTERNAL_API_ERROR,
-                )
-
-            data = resp.json()
-            choice = data["choices"][0]
+            response = await self._client.chat.complete_async(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            choice = response.choices[0]
             return self.success({
-                "content": choice["message"]["content"],
-                "model": data.get("model", model),
-                "usage": data.get("usage", {}),
-                "finish_reason": choice.get("finish_reason", ""),
+                "content": choice.message.content or "",
+                "model": response.model,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                } if response.usage else {},
+                "finish_reason": choice.finish_reason or "",
             })
         except Exception as e:
+            err_str = str(e).lower()
+            if "unauthorized" in err_str or "401" in err_str:
+                return self.error("API key Mistral invalide", ConnectorErrorCode.AUTH_FAILED)
+            if "rate" in err_str or "429" in err_str:
+                return self.error("Rate limit Mistral", ConnectorErrorCode.RATE_LIMITED)
             return self.error(f"Mistral error: {e}", ConnectorErrorCode.PROCESSING_ERROR)
 
     async def _create_embeddings(self, params: dict[str, Any]) -> ConnectorResult:
@@ -196,22 +183,18 @@ class MistralConnector(BaseConnector):
         if not input_text:
             return self.error("input requis", ConnectorErrorCode.INVALID_PARAMS)
 
-        payload = {"model": model, "input": [input_text]}
-
         try:
-            resp = await self._client.post("/embeddings", json=payload)
-            if resp.status_code != 200:
-                return self.error(
-                    f"Mistral Embeddings {resp.status_code}: {resp.text[:300]}",
-                    ConnectorErrorCode.EXTERNAL_API_ERROR,
-                )
-
-            data = resp.json()
-            embeddings = [item["embedding"] for item in data["data"]]
+            response = await self._client.embeddings.create_async(
+                model=model,
+                inputs=[input_text],
+            )
             return self.success({
-                "embeddings": embeddings,
-                "model": data.get("model", model),
-                "usage": data.get("usage", {}),
+                "embeddings": [item.embedding for item in response.data],
+                "model": response.model,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                } if response.usage else {},
             })
         except Exception as e:
             return self.error(f"Embeddings error: {e}", ConnectorErrorCode.PROCESSING_ERROR)

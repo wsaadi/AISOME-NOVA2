@@ -105,17 +105,10 @@ class GeminiConnector(BaseConnector):
         )
 
     async def connect(self, config: dict[str, Any]) -> None:
-        """Initialise le client HTTP Gemini."""
-        import httpx
+        """Initialise le client Gemini via le SDK officiel google-genai."""
+        from google import genai
 
-        self._api_key = config["api_key"]
-        self._base_url = config.get(
-            "base_url", "https://generativelanguage.googleapis.com"
-        )
-        self._client = httpx.AsyncClient(
-            base_url=self._base_url,
-            timeout=120.0,
-        )
+        self._client = genai.Client(api_key=config["api_key"])
 
     async def execute(self, action: str, params: dict[str, Any]) -> ConnectorResult:
         if action == "list_models":
@@ -127,17 +120,18 @@ class GeminiConnector(BaseConnector):
         return self.error(f"Action inconnue: {action}", ConnectorErrorCode.INVALID_ACTION)
 
     async def disconnect(self) -> None:
-        """Ferme le client HTTP."""
-        if hasattr(self, "_client"):
-            await self._client.aclose()
+        """Pas de connexion persistante à fermer."""
+        self._client = None
 
     async def health_check(self) -> bool:
         """Vérifie l'accès à l'API Gemini."""
         try:
-            resp = await self._client.get(
-                "/v1beta/models", params={"key": self._api_key}
+            await self._client.aio.models.generate_content(
+                model="gemini-2.0-flash",
+                contents="hi",
+                config={"max_output_tokens": 1},
             )
-            return resp.status_code == 200
+            return True
         except Exception:
             return False
 
@@ -149,6 +143,8 @@ class GeminiConnector(BaseConnector):
         return self.success({"models": models, "count": len(models)})
 
     async def _chat(self, params: dict[str, Any]) -> ConnectorResult:
+        from google.genai import types
+
         model = params.get("model", "gemini-2.0-flash")
         messages = params.get("messages", [])
         system_prompt = params.get("system_prompt", "")
@@ -158,74 +154,59 @@ class GeminiConnector(BaseConnector):
         if not messages:
             return self.error("messages requis", ConnectorErrorCode.INVALID_PARAMS)
 
-        # Convertir messages au format Gemini
+        # Convertir messages au format Gemini (assistant → model)
         contents = []
         for msg in messages:
             role = msg.get("role", "user")
-            # Gemini utilise "model" au lieu de "assistant"
             if role == "assistant":
                 role = "model"
-            contents.append({
-                "role": role,
-                "parts": [{"text": msg.get("content", "")}],
-            })
-
-        payload: dict[str, Any] = {
-            "contents": contents,
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens,
-            },
-        }
-        if system_prompt:
-            payload["systemInstruction"] = {
-                "parts": [{"text": system_prompt}]
-            }
-
-        try:
-            url = f"/v1beta/models/{model}:generateContent"
-            resp = await self._client.post(
-                url, json=payload, params={"key": self._api_key}
+            contents.append(
+                types.Content(
+                    role=role,
+                    parts=[types.Part(text=msg.get("content", ""))],
+                )
             )
 
-            if resp.status_code == 400:
-                return self.error(
-                    f"Gemini bad request: {resp.text[:300]}",
-                    ConnectorErrorCode.INVALID_PARAMS,
-                )
-            if resp.status_code == 403:
-                return self.error("API key Gemini invalide", ConnectorErrorCode.AUTH_FAILED)
-            if resp.status_code == 429:
-                return self.error("Rate limit Gemini", ConnectorErrorCode.RATE_LIMITED)
-            if resp.status_code != 200:
-                return self.error(
-                    f"Gemini API {resp.status_code}: {resp.text[:300]}",
-                    ConnectorErrorCode.EXTERNAL_API_ERROR,
-                )
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+        if system_prompt:
+            config.system_instruction = system_prompt
 
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return self.error("Aucune réponse générée", ConnectorErrorCode.PROCESSING_ERROR)
+        try:
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
 
-            candidate = candidates[0]
-            parts = candidate.get("content", {}).get("parts", [])
-            content = "".join(p.get("text", "") for p in parts)
+            content = response.text or ""
+            usage_meta = response.usage_metadata
+            usage = {}
+            if usage_meta:
+                usage = {
+                    "prompt_tokens": usage_meta.prompt_token_count or 0,
+                    "completion_tokens": usage_meta.candidates_token_count or 0,
+                    "total_tokens": usage_meta.total_token_count or 0,
+                }
 
-            usage_meta = data.get("usageMetadata", {})
-            usage = {
-                "prompt_tokens": usage_meta.get("promptTokenCount", 0),
-                "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
-                "total_tokens": usage_meta.get("totalTokenCount", 0),
-            }
+            finish_reason = ""
+            if response.candidates:
+                finish_reason = str(response.candidates[0].finish_reason or "")
 
             return self.success({
                 "content": content,
                 "model": model,
                 "usage": usage,
-                "finish_reason": candidate.get("finishReason", ""),
+                "finish_reason": finish_reason,
             })
         except Exception as e:
+            err_str = str(e).lower()
+            if "403" in err_str or "permission" in err_str:
+                return self.error("API key Gemini invalide", ConnectorErrorCode.AUTH_FAILED)
+            if "429" in err_str or "resource_exhausted" in err_str:
+                return self.error("Rate limit Gemini", ConnectorErrorCode.RATE_LIMITED)
             return self.error(f"Gemini error: {e}", ConnectorErrorCode.PROCESSING_ERROR)
 
     async def _create_embeddings(self, params: dict[str, Any]) -> ConnectorResult:
@@ -235,24 +216,11 @@ class GeminiConnector(BaseConnector):
         if not input_text:
             return self.error("input requis", ConnectorErrorCode.INVALID_PARAMS)
 
-        payload = {
-            "model": f"models/{model}",
-            "content": {"parts": [{"text": input_text}]},
-        }
-
         try:
-            url = f"/v1beta/models/{model}:embedContent"
-            resp = await self._client.post(
-                url, json=payload, params={"key": self._api_key}
+            response = await self._client.aio.models.embed_content(
+                model=model,
+                contents=input_text,
             )
-            if resp.status_code != 200:
-                return self.error(
-                    f"Gemini Embeddings {resp.status_code}: {resp.text[:300]}",
-                    ConnectorErrorCode.EXTERNAL_API_ERROR,
-                )
-
-            data = resp.json()
-            embedding = data.get("embedding", {}).get("values", [])
-            return self.success({"embeddings": [embedding]})
+            return self.success({"embeddings": [response.embeddings[0].values]})
         except Exception as e:
             return self.error(f"Embeddings error: {e}", ConnectorErrorCode.PROCESSING_ERROR)

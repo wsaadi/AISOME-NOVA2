@@ -86,244 +86,175 @@ class LLMService:
             )
 
     # ------------------------------------------------------------------
-    # Anthropic Messages API
+    # Anthropic Messages API (via official SDK)
     # ------------------------------------------------------------------
 
     async def _chat_anthropic(
         self, prompt: str, system_prompt: Optional[str],
         temperature: float, max_tokens: int,
     ) -> str:
-        import httpx
+        import anthropic
 
-        url = f"{self._base_url}/v1/messages"
         logger.info(
-            f"LLM call [anthropic] → POST {url} "
+            f"LLM call [anthropic] → messages.create "
             f"(model={self._model_slug}, max_tokens={max_tokens})"
         )
 
-        headers = {
-            "x-api-key": self._api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-        payload: dict[str, Any] = {
-            "model": self._model_slug,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-        if system_prompt:
-            payload["system"] = system_prompt
+        client = anthropic.AsyncAnthropic(
+            api_key=self._api_key,
+            **({"base_url": self._base_url} if self._base_url else {}),
+        )
+        try:
+            kwargs: dict[str, Any] = {
+                "model": self._model_slug,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            if system_prompt:
+                kwargs["system"] = system_prompt
 
-        llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
-        async with httpx.AsyncClient(
-            timeout=llm_timeout, http2=True,
-        ) as client:
-            try:
-                response = await client.post(url, headers=headers, json=payload)
-            except httpx.ReadTimeout:
-                raise ValueError(
-                    f"Anthropic request timed out after 300s "
-                    f"(model={self._model_slug}, max_tokens={max_tokens})."
-                )
-            except httpx.ConnectError as e:
-                raise ValueError(
-                    f"Cannot connect to Anthropic API at {url}: {e}"
-                )
-            except httpx.HTTPError as e:
-                raise ValueError(
-                    f"HTTP error calling Anthropic API at {url}: "
-                    f"{type(e).__name__}: {e}"
-                )
+            message = await client.messages.create(**kwargs)
+        except anthropic.AuthenticationError as e:
+            raise ValueError(f"Anthropic authentication failed: {e}")
+        except anthropic.RateLimitError as e:
+            raise ValueError(f"Anthropic rate limit exceeded: {e}")
+        except anthropic.APIConnectionError as e:
+            raise ValueError(
+                f"Cannot connect to Anthropic API: {e}"
+            )
+        except anthropic.APITimeoutError as e:
+            raise ValueError(
+                f"Anthropic request timed out "
+                f"(model={self._model_slug}, max_tokens={max_tokens}): {e}"
+            )
+        finally:
+            await client.close()
 
-            if response.status_code != 200:
-                body = response.text[:500]
-                logger.error(
-                    f"Anthropic API returned {response.status_code}: {body}"
-                )
-                raise ValueError(
-                    f"Anthropic API error {response.status_code}: {body}"
-                )
-
-            data = response.json()
-
-        usage = data.get("usage", {})
         self._last_usage = {
-            "tokens_in": usage.get("input_tokens", 0),
-            "tokens_out": usage.get("output_tokens", 0),
+            "tokens_in": message.usage.input_tokens,
+            "tokens_out": message.usage.output_tokens,
         }
-        content_blocks = data.get("content", [])
         return "\n".join(
-            b["text"] for b in content_blocks if b.get("type") == "text"
+            b.text for b in message.content if b.type == "text"
         )
 
     async def _stream_anthropic(
         self, prompt: str, system_prompt: Optional[str],
         temperature: float, max_tokens: int,
     ) -> AsyncIterator[str]:
-        import httpx
-        import json as _json
+        import anthropic
 
-        headers = {
-            "x-api-key": self._api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-        payload: dict[str, Any] = {
-            "model": self._model_slug,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": True,
-        }
-        if system_prompt:
-            payload["system"] = system_prompt
+        client = anthropic.AsyncAnthropic(
+            api_key=self._api_key,
+            **({"base_url": self._base_url} if self._base_url else {}),
+        )
+        try:
+            kwargs: dict[str, Any] = {
+                "model": self._model_slug,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            if system_prompt:
+                kwargs["system"] = system_prompt
 
-        llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
-        async with httpx.AsyncClient(
-            timeout=llm_timeout, http2=True,
-        ) as client:
-            async with client.stream(
-                "POST", f"{self._base_url}/v1/messages",
-                headers=headers, json=payload,
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    raw = line[6:]
-                    if raw == "[DONE]":
-                        break
-                    event = _json.loads(raw)
-                    event_type = event.get("type", "")
-                    if event_type == "content_block_delta":
-                        text = event.get("delta", {}).get("text", "")
-                        if text:
-                            yield text
-                    elif event_type == "message_delta":
-                        usage = event.get("usage", {})
-                        if usage:
-                            self._last_usage = {
-                                "tokens_in": usage.get("input_tokens", 0),
-                                "tokens_out": usage.get("output_tokens", 0),
-                            }
+            async with client.messages.stream(**kwargs) as stream:
+                async for text in stream.text_stream:
+                    yield text
+                final_message = await stream.get_final_message()
+                self._last_usage = {
+                    "tokens_in": final_message.usage.input_tokens,
+                    "tokens_out": final_message.usage.output_tokens,
+                }
+        finally:
+            await client.close()
 
     # ------------------------------------------------------------------
-    # OpenAI-compatible API (default)
+    # OpenAI-compatible API (via official SDK)
     # ------------------------------------------------------------------
 
     async def _chat_openai(
         self, prompt: str, system_prompt: Optional[str],
         temperature: float, max_tokens: int,
     ) -> str:
-        import httpx
+        import openai
 
-        url = f"{self._base_url}/chat/completions"
         logger.info(
-            f"LLM call [openai-compat] → POST {url} "
+            f"LLM call [openai-compat] → chat.completions.create "
             f"(model={self._model_slug}, max_tokens={max_tokens})"
         )
 
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
-        messages = []
+        client = openai.AsyncOpenAI(
+            api_key=self._api_key,
+            **({"base_url": self._base_url} if self._base_url else {}),
+        )
+        messages: list[dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        payload = {
-            "model": self._model_slug,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
+        try:
+            response = await client.chat.completions.create(
+                model=self._model_slug,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except openai.AuthenticationError as e:
+            raise ValueError(f"LLM authentication failed: {e}")
+        except openai.RateLimitError as e:
+            raise ValueError(f"LLM rate limit exceeded: {e}")
+        except openai.APIConnectionError as e:
+            raise ValueError(f"Cannot connect to LLM API: {e}")
+        except openai.APITimeoutError as e:
+            raise ValueError(
+                f"LLM request timed out "
+                f"(model={self._model_slug}, max_tokens={max_tokens}): {e}"
+            )
+        finally:
+            await client.close()
 
-        llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
-        async with httpx.AsyncClient(timeout=llm_timeout) as client:
-            try:
-                response = await client.post(url, headers=headers, json=payload)
-            except httpx.ReadTimeout:
-                raise ValueError(
-                    f"LLM request timed out after 300s "
-                    f"(model={self._model_slug}, max_tokens={max_tokens})."
-                )
-            except httpx.ConnectError as e:
-                raise ValueError(
-                    f"Cannot connect to LLM API at {url}: {e}"
-                )
-            except httpx.HTTPError as e:
-                raise ValueError(
-                    f"HTTP error calling LLM API at {url}: "
-                    f"{type(e).__name__}: {e}"
-                )
-
-            if response.status_code != 200:
-                body = response.text[:500]
-                logger.error(f"LLM API returned {response.status_code}: {body}")
-                raise ValueError(
-                    f"LLM API error {response.status_code}: {body}"
-                )
-
-            data = response.json()
-
-        usage = data.get("usage", {})
         self._last_usage = {
-            "tokens_in": usage.get("prompt_tokens", 0),
-            "tokens_out": usage.get("completion_tokens", 0),
+            "tokens_in": response.usage.prompt_tokens if response.usage else 0,
+            "tokens_out": response.usage.completion_tokens if response.usage else 0,
         }
-        return data["choices"][0]["message"]["content"]
+        return response.choices[0].message.content or ""
 
     async def _stream_openai(
         self, prompt: str, system_prompt: Optional[str],
         temperature: float, max_tokens: int,
     ) -> AsyncIterator[str]:
-        import httpx
-        import json as _json
+        import openai
 
-        if self._is_anthropic:
-            async for token in self._stream_anthropic(prompt, system_prompt, temperature, max_tokens):
-                yield token
-            return
-
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
-        messages = []
+        client = openai.AsyncOpenAI(
+            api_key=self._api_key,
+            **({"base_url": self._base_url} if self._base_url else {}),
+        )
+        messages: list[dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        payload = {
-            "model": self._model_slug,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": True,
-        }
-
-        llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
-        async with httpx.AsyncClient(timeout=llm_timeout) as client:
-            async with client.stream(
-                "POST", f"{self._base_url}/chat/completions",
-                headers=headers, json=payload,
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line.startswith("data: ") and line != "data: [DONE]":
-                        chunk = _json.loads(line[6:])
-                        usage = chunk.get("usage")
-                        if usage:
-                            self._last_usage = {
-                                "tokens_in": usage.get("prompt_tokens", 0),
-                                "tokens_out": usage.get("completion_tokens", 0),
-                            }
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
+        try:
+            stream = await client.chat.completions.create(
+                model=self._model_slug,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+                if chunk.usage:
+                    self._last_usage = {
+                        "tokens_in": chunk.usage.prompt_tokens or 0,
+                        "tokens_out": chunk.usage.completion_tokens or 0,
+                    }
+        finally:
+            await client.close()
 
     # ------------------------------------------------------------------
     # Public interface (dispatches to the right protocol)

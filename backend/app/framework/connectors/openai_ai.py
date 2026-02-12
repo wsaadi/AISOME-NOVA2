@@ -114,21 +114,13 @@ class OpenaiConnector(BaseConnector):
         )
 
     async def connect(self, config: dict[str, Any]) -> None:
-        """Initialise le client HTTP OpenAI."""
-        import httpx
+        """Initialise le client OpenAI via le SDK officiel."""
+        import openai
 
-        headers = {
-            "Authorization": f"Bearer {config['api_key']}",
-            "Content-Type": "application/json",
-        }
-        if config.get("organization"):
-            headers["OpenAI-Organization"] = config["organization"]
-
-        self._base_url = config.get("base_url", "https://api.openai.com/v1")
-        self._client = httpx.AsyncClient(
-            base_url=self._base_url,
-            headers=headers,
-            timeout=120.0,
+        self._client = openai.AsyncOpenAI(
+            api_key=config["api_key"],
+            organization=config.get("organization"),
+            base_url=config.get("base_url") or "https://api.openai.com/v1",
         )
 
     async def execute(self, action: str, params: dict[str, Any]) -> ConnectorResult:
@@ -141,15 +133,16 @@ class OpenaiConnector(BaseConnector):
         return self.error(f"Action inconnue: {action}", ConnectorErrorCode.INVALID_ACTION)
 
     async def disconnect(self) -> None:
-        """Ferme le client HTTP."""
-        if hasattr(self, "_client"):
-            await self._client.aclose()
+        """Ferme le client OpenAI."""
+        if hasattr(self, "_client") and self._client:
+            await self._client.close()
+            self._client = None
 
     async def health_check(self) -> bool:
         """Vérifie que l'API key est valide."""
         try:
-            resp = await self._client.get("/models")
-            return resp.status_code == 200
+            await self._client.models.list()
+            return True
         except Exception:
             return False
 
@@ -161,6 +154,8 @@ class OpenaiConnector(BaseConnector):
         return self.success({"models": models, "count": len(models)})
 
     async def _chat(self, params: dict[str, Any]) -> ConnectorResult:
+        import openai
+
         model = params.get("model", "gpt-4o")
         messages = list(params.get("messages", []))
         temperature = params.get("temperature", 0.7)
@@ -173,59 +168,62 @@ class OpenaiConnector(BaseConnector):
         if not messages:
             return self.error("messages requis", ConnectorErrorCode.INVALID_PARAMS)
 
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-
         try:
-            resp = await self._client.post("/chat/completions", json=payload)
-            if resp.status_code == 401:
-                return self.error("API key invalide", ConnectorErrorCode.AUTH_FAILED)
-            if resp.status_code == 429:
-                return self.error("Rate limit OpenAI", ConnectorErrorCode.RATE_LIMITED)
-            if resp.status_code != 200:
-                return self.error(
-                    f"OpenAI API {resp.status_code}: {resp.text[:300]}",
-                    ConnectorErrorCode.EXTERNAL_API_ERROR,
-                )
-
-            data = resp.json()
-            choice = data["choices"][0]
+            response = await self._client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            choice = response.choices[0]
             return self.success({
-                "content": choice["message"]["content"],
-                "model": data.get("model", model),
-                "usage": data.get("usage", {}),
-                "finish_reason": choice.get("finish_reason", ""),
+                "content": choice.message.content or "",
+                "model": response.model,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                } if response.usage else {},
+                "finish_reason": choice.finish_reason or "",
             })
+        except openai.AuthenticationError:
+            return self.error("API key invalide", ConnectorErrorCode.AUTH_FAILED)
+        except openai.RateLimitError:
+            return self.error("Rate limit OpenAI", ConnectorErrorCode.RATE_LIMITED)
+        except openai.APIStatusError as e:
+            return self.error(
+                f"OpenAI API {e.status_code}: {e.message}",
+                ConnectorErrorCode.EXTERNAL_API_ERROR,
+            )
         except Exception as e:
             return self.error(f"OpenAI error: {e}", ConnectorErrorCode.PROCESSING_ERROR)
 
     async def _create_embeddings(self, params: dict[str, Any]) -> ConnectorResult:
+        import openai
+
         model = params.get("model", "text-embedding-3-small")
         input_text = params.get("input", "")
 
         if not input_text:
             return self.error("input requis", ConnectorErrorCode.INVALID_PARAMS)
 
-        payload = {"model": model, "input": input_text}
-
         try:
-            resp = await self._client.post("/embeddings", json=payload)
-            if resp.status_code != 200:
-                return self.error(
-                    f"OpenAI Embeddings {resp.status_code}: {resp.text[:300]}",
-                    ConnectorErrorCode.EXTERNAL_API_ERROR,
-                )
-
-            data = resp.json()
-            embeddings = [item["embedding"] for item in data["data"]]
+            response = await self._client.embeddings.create(
+                model=model,
+                input=input_text,
+            )
             return self.success({
-                "embeddings": embeddings,
-                "model": data.get("model", model),
-                "usage": data.get("usage", {}),
+                "embeddings": [item.embedding for item in response.data],
+                "model": response.model,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                } if response.usage else {},
             })
+        except openai.APIStatusError as e:
+            return self.error(
+                f"OpenAI Embeddings {e.status_code}: {e.message}",
+                ConnectorErrorCode.EXTERNAL_API_ERROR,
+            )
         except Exception as e:
             return self.error(f"Embeddings error: {e}", ConnectorErrorCode.PROCESSING_ERROR)
