@@ -155,14 +155,28 @@ class AgentCreatorAgent(BaseAgent):
 
         context.set_progress(70, t("agent_creator.progress.processing", lang))
 
+        # Count user messages to determine if we're still in question phase
+        user_msg_count = sum(
+            1 for msg in history if (getattr(msg, "role", "user") == "user")
+        ) + 1  # +1 for current message
+
         # Extract any generated files from the response
         files = self._extract_files(llm_response)
+
+        # Hard guard: if conversation is too short, strip any files the LLM
+        # generated prematurely and return only the conversational text.
+        if files and user_msg_count < 4:
+            llm_response = self._clean_response(llm_response)
+            files = {}
         clean_response = llm_response
 
         metadata: dict = {"phase": "conversation"}
 
         if files:
             context.set_progress(80, t("agent_creator.progress.validating", lang))
+
+            # Auto-generate agent.json for import compatibility
+            files = self._inject_agent_json(files)
 
             # Validate the generated files
             validation = self._validate_generated_files(files, lang)
@@ -355,6 +369,53 @@ class AgentCreatorAgent(BaseAgent):
 
         cleaned = pattern.sub(replacer, response)
         return cleaned.strip()
+
+    def _inject_agent_json(self, files: dict[str, str]) -> dict[str, str]:
+        """
+        Auto-génère un fichier agent.json compatible avec l'import platform.
+
+        Construit agent.json à partir de backend/manifest.json et
+        backend/prompts/system.md pour que le ZIP soit directement importable
+        via /api/agents/import.
+
+        Args:
+            files: Dict des fichiers générés par le LLM
+
+        Returns:
+            Dict enrichi avec agent.json à la racine
+        """
+        manifest_content = files.get("backend/manifest.json", "")
+        system_md = files.get("backend/prompts/system.md", "")
+
+        if not manifest_content:
+            return files
+
+        try:
+            manifest = json.loads(manifest_content)
+        except json.JSONDecodeError:
+            return files
+
+        agent_json = {
+            "name": manifest.get("name", "Unknown Agent"),
+            "slug": manifest.get("slug", "unknown-agent"),
+            "description": manifest.get("description", ""),
+            "version": manifest.get("version", "1.0.0"),
+            "agent_type": manifest.get("category", "conversational"),
+            "config": {
+                "icon": manifest.get("icon", "smart_toy"),
+                "category": manifest.get("category", "general"),
+                "tags": manifest.get("tags", []),
+                "dependencies": manifest.get("dependencies", {}),
+                "triggers": manifest.get("triggers", []),
+                "capabilities": manifest.get("capabilities", []),
+            },
+            "system_prompt": system_md,
+            "moderation_rules": [],
+            "export_version": "1.0",
+        }
+
+        files["agent.json"] = json.dumps(agent_json, indent=2, ensure_ascii=False)
+        return files
 
     def _extract_slug_from_files(self, files: dict[str, str]) -> str:
         """

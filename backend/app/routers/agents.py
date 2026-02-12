@@ -176,14 +176,20 @@ async def import_agent(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    # Validate ZIP before passing to manager
+    # Validate ZIP structure before passing to manager
     import io
     try:
         with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
-            if "agent.json" not in zf.namelist():
+            names = zf.namelist()
+            has_standard = "agent.json" in names
+            has_framework = "backend/manifest.json" in names
+            if not has_standard and not has_framework:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Invalid agent archive: missing agent.json. Found: {zf.namelist()[:10]}",
+                    detail=(
+                        "Invalid agent archive: expected agent.json or backend/manifest.json. "
+                        f"Found: {names[:10]}"
+                    ),
                 )
     except zipfile.BadZipFile:
         raise HTTPException(status_code=422, detail="Invalid file: not a valid ZIP archive")
