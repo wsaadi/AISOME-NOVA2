@@ -162,13 +162,15 @@ class ExecutionPipeline:
 
         except Exception as e:
             execution_time = int((time.time() - start_time) * 1000)
+            error_msg = str(e) or f"{type(e).__module__}.{type(e).__name__}"
             logger.error(
-                f"Pipeline error for agent {agent.manifest.slug}: {e}",
+                f"Pipeline error for agent {agent.manifest.slug}: "
+                f"[{type(e).__name__}] {error_msg}",
                 exc_info=True,
             )
             return PipelineResult(
                 success=False,
-                error=str(e),
+                error=error_msg,
                 error_code="EXECUTION_ERROR",
                 execution_time_ms=execution_time,
             )
