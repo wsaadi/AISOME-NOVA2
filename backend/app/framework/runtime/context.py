@@ -50,6 +50,14 @@ class LLMService:
         self._last_usage: dict[str, int] = {"tokens_in": 0, "tokens_out": 0}
 
     @property
+    def _is_anthropic(self) -> bool:
+        """Detect if the provider is Anthropic (needs Messages API format)."""
+        return (
+            "anthropic" in self._provider_slug.lower()
+            or "anthropic" in self._base_url.lower()
+        )
+
+    @property
     def provider_slug(self) -> str:
         return self._provider_slug
 
@@ -92,6 +100,9 @@ class LLMService:
                 "Please set the API key in Settings > LLM Providers."
             )
         import httpx
+
+        if self._is_anthropic:
+            return await self._chat_anthropic(prompt, system_prompt, temperature, max_tokens)
 
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -159,6 +170,11 @@ class LLMService:
             )
         import httpx
 
+        if self._is_anthropic:
+            async for token in self._stream_anthropic(prompt, system_prompt, temperature, max_tokens):
+                yield token
+            return
+
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -201,6 +217,112 @@ class LLMService:
                         content = delta.get("content", "")
                         if content:
                             yield content
+
+
+    async def _chat_anthropic(
+        self,
+        prompt: str,
+        system_prompt: Optional[str],
+        temperature: float,
+        max_tokens: int,
+    ) -> str:
+        """Anthropic Messages API — non-streaming."""
+        import httpx
+
+        headers = {
+            "x-api-key": self._api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+        payload: dict[str, Any] = {
+            "model": self._model_slug,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{self._base_url}/v1/messages",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Track token usage
+            usage = data.get("usage", {})
+            self._last_usage = {
+                "tokens_in": usage.get("input_tokens", 0),
+                "tokens_out": usage.get("output_tokens", 0),
+            }
+
+            # Extract text from content blocks
+            content_blocks = data.get("content", [])
+            text_parts = [
+                block["text"] for block in content_blocks
+                if block.get("type") == "text"
+            ]
+            return "\n".join(text_parts)
+
+    async def _stream_anthropic(
+        self,
+        prompt: str,
+        system_prompt: Optional[str],
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncIterator[str]:
+        """Anthropic Messages API — streaming."""
+        import httpx
+        import json
+
+        headers = {
+            "x-api-key": self._api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+        payload: dict[str, Any] = {
+            "model": self._model_slug,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream(
+                "POST",
+                f"{self._base_url}/v1/messages",
+                headers=headers,
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    chunk = json.loads(line[6:])
+                    chunk_type = chunk.get("type", "")
+
+                    if chunk_type == "content_block_delta":
+                        delta = chunk.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            text = delta.get("text", "")
+                            if text:
+                                yield text
+
+                    elif chunk_type == "message_delta":
+                        usage = chunk.get("usage")
+                        if usage:
+                            self._last_usage = {
+                                "tokens_in": usage.get("input_tokens", 0),
+                                "tokens_out": usage.get("output_tokens", 0),
+                            }
 
 
 class ToolService:
