@@ -92,6 +92,12 @@ class LLMService:
     ) -> str:
         import httpx
 
+        url = f"{self._base_url}/v1/messages"
+        logger.info(
+            f"LLM call [anthropic] → POST {url} "
+            f"(model={self._model_slug}, max_tokens={max_tokens})"
+        )
+
         headers = {
             "x-api-key": self._api_key,
             "anthropic-version": "2023-06-01",
@@ -109,16 +115,31 @@ class LLMService:
         llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
         async with httpx.AsyncClient(timeout=llm_timeout) as client:
             try:
-                response = await client.post(
-                    f"{self._base_url}/v1/messages",
-                    headers=headers, json=payload,
-                )
-                response.raise_for_status()
+                response = await client.post(url, headers=headers, json=payload)
             except httpx.ReadTimeout:
                 raise ValueError(
                     f"Anthropic request timed out after 300s "
                     f"(model={self._model_slug}, max_tokens={max_tokens})."
                 )
+            except httpx.ConnectError as e:
+                raise ValueError(
+                    f"Cannot connect to Anthropic API at {url}: {e}"
+                )
+            except httpx.HTTPError as e:
+                raise ValueError(
+                    f"HTTP error calling Anthropic API at {url}: "
+                    f"{type(e).__name__}: {e}"
+                )
+
+            if response.status_code != 200:
+                body = response.text[:500]
+                logger.error(
+                    f"Anthropic API returned {response.status_code}: {body}"
+                )
+                raise ValueError(
+                    f"Anthropic API error {response.status_code}: {body}"
+                )
+
             data = response.json()
 
         usage = data.get("usage", {})
@@ -190,6 +211,12 @@ class LLMService:
     ) -> str:
         import httpx
 
+        url = f"{self._base_url}/chat/completions"
+        logger.info(
+            f"LLM call [openai-compat] → POST {url} "
+            f"(model={self._model_slug}, max_tokens={max_tokens})"
+        )
+
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -209,16 +236,29 @@ class LLMService:
         llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
         async with httpx.AsyncClient(timeout=llm_timeout) as client:
             try:
-                response = await client.post(
-                    f"{self._base_url}/chat/completions",
-                    headers=headers, json=payload,
-                )
-                response.raise_for_status()
+                response = await client.post(url, headers=headers, json=payload)
             except httpx.ReadTimeout:
                 raise ValueError(
                     f"LLM request timed out after 300s "
                     f"(model={self._model_slug}, max_tokens={max_tokens})."
                 )
+            except httpx.ConnectError as e:
+                raise ValueError(
+                    f"Cannot connect to LLM API at {url}: {e}"
+                )
+            except httpx.HTTPError as e:
+                raise ValueError(
+                    f"HTTP error calling LLM API at {url}: "
+                    f"{type(e).__name__}: {e}"
+                )
+
+            if response.status_code != 200:
+                body = response.text[:500]
+                logger.error(f"LLM API returned {response.status_code}: {body}")
+                raise ValueError(
+                    f"LLM API error {response.status_code}: {body}"
+                )
+
             data = response.json()
 
         usage = data.get("usage", {})
