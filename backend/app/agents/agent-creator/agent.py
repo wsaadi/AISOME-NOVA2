@@ -117,17 +117,20 @@ class AgentCreatorAgent(BaseAgent):
         Transition to generation when:
         - At least 3 user messages exchanged, OR
         - At least 2 user messages + user explicitly confirms
+
+        NOTE: engine.py saves the user message to the session BEFORE calling
+        handle_message, so history already contains the current message.
+        We do NOT add +1 to the count.
         """
         lang = context.lang
 
         context.set_progress(10, t("agent_creator.progress.loading_prompt", lang))
 
-        # Determine conversation phase
+        # Determine conversation phase from history
+        # NOTE: the current user message is ALREADY in history (saved by engine.py)
         context.set_progress(20, t("agent_creator.progress.loading_history", lang))
         history = await context.memory.get_history(limit=50) if context.memory else []
-        user_msg_count = sum(
-            1 for msg in history if getattr(msg, "role", "user") == "user"
-        ) + 1  # +1 for current message
+        user_msg_count = self._count_user_messages(history)
 
         in_generation_phase = self._should_enter_generation(
             user_msg_count, message.content
@@ -136,9 +139,9 @@ class AgentCreatorAgent(BaseAgent):
         # Load the appropriate system prompt
         system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
 
-        # Build conversation
+        # Build conversation from history (current message already included)
         conversation = self._build_conversation(
-            history, message, in_generation_phase
+            history, in_generation_phase
         )
 
         context.set_progress(30, t("agent_creator.progress.generating", lang))
@@ -151,8 +154,15 @@ class AgentCreatorAgent(BaseAgent):
 
         context.set_progress(70, t("agent_creator.progress.processing", lang))
 
-        # Extract generated files (only possible in generation phase)
-        files = self._extract_files(llm_response)
+        # HARD BLOCK: never extract files during question phase,
+        # even if the LLM ignores instructions and outputs markers
+        files: dict[str, str] = {}
+        if in_generation_phase:
+            files = self._extract_files(llm_response)
+        elif _FILE_PATTERN.search(llm_response):
+            # LLM tried to generate during question phase — strip it
+            llm_response = self._strip_file_markers(llm_response)
+
         metadata: dict = {"phase": "conversation"}
 
         if files:
@@ -205,20 +215,17 @@ class AgentCreatorAgent(BaseAgent):
 
         Uses the same phase detection as handle_message.
         Files are extracted after the full response is accumulated.
+        HARD BLOCK: files are never extracted during question phase.
         """
         history = await context.memory.get_history(limit=50) if context.memory else []
-        user_msg_count = sum(
-            1 for msg in history if getattr(msg, "role", "user") == "user"
-        ) + 1
+        user_msg_count = self._count_user_messages(history)
 
         in_generation_phase = self._should_enter_generation(
             user_msg_count, message.content
         )
 
         system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
-        conversation = self._build_conversation(
-            history, message, in_generation_phase
-        )
+        conversation = self._build_conversation(history, in_generation_phase)
 
         accumulated = ""
         async for token in context.llm.stream(
@@ -230,7 +237,10 @@ class AgentCreatorAgent(BaseAgent):
             accumulated += token
             yield AgentResponseChunk(content=token)
 
-        files = self._extract_files(accumulated)
+        # HARD BLOCK: never extract files during question phase
+        files: dict[str, str] = {}
+        if in_generation_phase:
+            files = self._extract_files(accumulated)
 
         if files:
             files = self._build_agent_json(files)
@@ -261,6 +271,24 @@ class AgentCreatorAgent(BaseAgent):
     # Phase detection
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _count_user_messages(history: list) -> int:
+        """
+        Count user messages in history.
+
+        NOTE: engine.py saves the current user message to the session
+        BEFORE calling handle_message, so history already contains it.
+        No +1 adjustment is needed.
+        """
+        count = 0
+        for msg in history:
+            role = getattr(msg, "role", None)
+            # role can be a MessageRole enum (inherits from str) or a string
+            role_str = role.value if hasattr(role, "value") else str(role)
+            if role_str == "user":
+                count += 1
+        return count
+
     def _should_enter_generation(
         self, user_msg_count: int, current_message: str
     ) -> bool:
@@ -268,9 +296,12 @@ class AgentCreatorAgent(BaseAgent):
         Determine whether the conversation should enter generation phase.
 
         Rules:
-        - Always question phase on the 1st message (user just described their idea)
+        - Always question phase on 1st or 2nd message
         - Generation allowed after 3+ user messages (enough Q&A happened)
         - Generation allowed after 2+ user messages IF user explicitly confirms
+
+        Even if the LLM ignores the question-phase prompt, the hard block
+        in handle_message will prevent file extraction.
         """
         if user_msg_count <= 1:
             return False
@@ -335,26 +366,31 @@ class AgentCreatorAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def _build_conversation(
-        self, history: list, message: UserMessage, generation_phase: bool
+        self, history: list, generation_phase: bool
     ) -> str:
         """
-        Build the conversation string from history + current message.
+        Build the conversation string from history.
+
+        NOTE: the current user message is already in history (saved by
+        engine.py before handle_message is called), so we don't re-add it.
 
         Injects a system reminder during question phase to reinforce behavior.
         """
         parts: list[str] = []
         for msg in history:
             role = getattr(msg, "role", "user")
+            # Handle MessageRole enum
+            role_str = role.value if hasattr(role, "value") else str(role)
             content = getattr(msg, "content", str(msg))
-            parts.append(f"[{role}]: {content}")
+            parts.append(f"[{role_str}]: {content}")
 
-        parts.append(f"[user]: {message.content}")
-
-        # In question phase, inject a reminder
+        # In question phase, inject a reminder after the conversation
         if not generation_phase:
             parts.append(
-                "[system]: REMINDER — You are still in the QUESTION PHASE. "
-                "Ask ONE clarifying question. Do NOT generate code or files."
+                "[system]: REMINDER — You are in the QUESTION PHASE. "
+                "Ask ONE clarifying question about the user's needs. "
+                "Do NOT generate code, files, or technical output. "
+                "Do NOT use <<<FILE: markers."
             )
 
         return "\n\n".join(parts)
