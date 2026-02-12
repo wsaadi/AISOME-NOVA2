@@ -29,6 +29,9 @@ from app.framework.schemas import (
 
 logger = logging.getLogger(__name__)
 
+# Module load indicator — helps verify Docker volume mount + uvicorn reload
+print("[context.py] LLMService loaded — Anthropic + OpenAI dual-protocol support active")
+
 
 # =============================================================================
 # Service Interfaces (ce que l'agent voit)
@@ -344,9 +347,24 @@ class LLMService:
         depending on the configured provider.
         """
         self._validate_config()
-        if self._is_anthropic:
-            return await self._chat_anthropic(prompt, system_prompt, temperature, max_tokens)
-        return await self._chat_openai(prompt, system_prompt, temperature, max_tokens)
+        logger.info(
+            f"[LLMService.chat] provider={self._provider_slug} "
+            f"is_anthropic={self._is_anthropic} "
+            f"model={self._model_slug} base_url={self._base_url}"
+        )
+        try:
+            if self._is_anthropic:
+                return await self._chat_anthropic(prompt, system_prompt, temperature, max_tokens)
+            return await self._chat_openai(prompt, system_prompt, temperature, max_tokens)
+        except ValueError:
+            raise  # Already wrapped with a clear message
+        except Exception as e:
+            # Catch-all: ensure no raw httpx exception escapes without context
+            raise ValueError(
+                f"LLM call failed [{type(e).__name__}]: {e} "
+                f"(provider={self._provider_slug}, model={self._model_slug}, "
+                f"base_url={self._base_url})"
+            ) from e
 
     async def stream(
         self,
