@@ -96,7 +96,7 @@ class LLMService:
         import anthropic
 
         logger.info(
-            f"LLM call [anthropic] → messages.create "
+            f"LLM call [anthropic] → messages.stream "
             f"(model={self._model_slug}, max_tokens={max_tokens})"
         )
 
@@ -114,7 +114,18 @@ class LLMService:
             if system_prompt:
                 kwargs["system"] = system_prompt
 
-            message = await client.messages.create(**kwargs)
+            # Use streaming internally to avoid Anthropic's
+            # "Streaming is required for long operations" restriction.
+            # Collects all chunks and returns the full text.
+            chunks: list[str] = []
+            async with client.messages.stream(**kwargs) as stream:
+                async for text in stream.text_stream:
+                    chunks.append(text)
+                final_message = await stream.get_final_message()
+            self._last_usage = {
+                "tokens_in": final_message.usage.input_tokens,
+                "tokens_out": final_message.usage.output_tokens,
+            }
         except anthropic.AuthenticationError as e:
             raise ValueError(f"Anthropic authentication failed: {e}")
         except anthropic.RateLimitError as e:
@@ -131,13 +142,7 @@ class LLMService:
         finally:
             await client.close()
 
-        self._last_usage = {
-            "tokens_in": message.usage.input_tokens,
-            "tokens_out": message.usage.output_tokens,
-        }
-        return "\n".join(
-            b.text for b in message.content if b.type == "text"
-        )
+        return "".join(chunks)
 
     async def _stream_anthropic(
         self, prompt: str, system_prompt: Optional[str],
