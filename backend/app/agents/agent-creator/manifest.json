@@ -1,8 +1,8 @@
 {
   "name": "Agent Creator",
   "slug": "agent-creator",
-  "version": "1.0.0",
-  "description": "Creates complete NOVA2 agents from natural language descriptions — interactive, multilingual, framework-compliant",
+  "version": "2.0.0",
+  "description": "Creates complete NOVA2 agents from natural language descriptions — interactive conversation, full framework compliance, file preview and ZIP download",
   "author": "AISOME",
   "icon": "auto_fix_high",
   "category": "development",
