@@ -18,11 +18,14 @@ The system prompt is split into two parts:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator
 
 from app.framework.base import BaseAgent
+
+logger = logging.getLogger(__name__)
 from app.framework.schemas import (
     AgentManifest,
     AgentResponse,
@@ -41,8 +44,10 @@ if TYPE_CHECKING:
 
 _GENERATION_MARKER = "<!-- GENERATION_INSTRUCTIONS_START -->"
 
-# Minimum number of user messages before we allow generation phase.
-# 1st = initial description, 2nd = answer to question, 3rd = confirmation
+# Minimum number of user messages before generation phase can be entered.
+# The user must ALSO confirm explicitly (keyword match) — count alone
+# never triggers generation.  This lets the LLM naturally progress
+# through question → summary → confirmation.
 _MIN_MESSAGES_FOR_GENERATION = 3
 
 # Keywords that signal the user wants to skip to generation or confirm
@@ -114,9 +119,9 @@ class AgentCreatorAgent(BaseAgent):
         - Question phase: LLM only sees conversation rules (cannot generate files)
         - Generation phase: LLM sees full spec with file format and framework ref
 
-        Transition to generation when:
-        - At least 3 user messages exchanged, OR
-        - At least 2 user messages + user explicitly confirms
+        Transition to generation requires BOTH:
+        - At least _MIN_MESSAGES_FOR_GENERATION user messages, AND
+        - An explicit confirmation keyword in the latest message
 
         NOTE: engine.py saves the user message to the session BEFORE calling
         handle_message, so history already contains the current message.
@@ -134,6 +139,11 @@ class AgentCreatorAgent(BaseAgent):
 
         in_generation_phase = self._should_enter_generation(
             user_msg_count, message.content
+        )
+        logger.info(
+            f"[agent-creator] handle_message: history={len(history)} msgs, "
+            f"user_count={user_msg_count}, phase={'GENERATION' if in_generation_phase else 'QUESTION'}, "
+            f"msg={message.content[:80]!r}"
         )
 
         # Load the appropriate system prompt
@@ -223,6 +233,11 @@ class AgentCreatorAgent(BaseAgent):
         in_generation_phase = self._should_enter_generation(
             user_msg_count, message.content
         )
+        logger.info(
+            f"[agent-creator] handle_message_stream: history={len(history)} msgs, "
+            f"user_count={user_msg_count}, phase={'GENERATION' if in_generation_phase else 'QUESTION'}, "
+            f"msg={message.content[:80]!r}"
+        )
 
         system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
         conversation = self._build_conversation(history, in_generation_phase)
@@ -296,25 +311,34 @@ class AgentCreatorAgent(BaseAgent):
         Determine whether the conversation should enter generation phase.
 
         Rules:
-        - Always question phase on 1st or 2nd message
-        - Generation allowed after 3+ user messages (enough Q&A happened)
-        - Generation allowed after 2+ user messages IF user explicitly confirms
+        - Always question phase on 1st message
+        - Generation REQUIRES both:
+          a) at least _MIN_MESSAGES_FOR_GENERATION user messages, AND
+          b) an explicit confirmation keyword in the latest message
+        - Message count alone NEVER triggers generation — the LLM must
+          first present a summary and the user must confirm.
+
+        This prevents the system prompt from switching to the full
+        823-line generation spec prematurely, which confuses the model.
 
         Even if the LLM ignores the question-phase prompt, the hard block
         in handle_message will prevent file extraction.
         """
-        if user_msg_count <= 1:
+        if user_msg_count < _MIN_MESSAGES_FOR_GENERATION:
             return False
 
-        if user_msg_count >= _MIN_MESSAGES_FOR_GENERATION:
-            return True
-
-        # Check for explicit confirmation keywords (2+ messages)
-        if user_msg_count >= 2:
-            lower = current_message.lower().strip()
-            for keyword in _CONFIRMATION_KEYWORDS:
-                if keyword in lower:
-                    return True
+        # Require explicit confirmation keyword.
+        # To avoid false positives (e.g. "oui clause alternatives" is NOT
+        # a confirmation — it's answering a question), only match when:
+        #   - The message is short (≤ 30 chars): likely a pure confirmation
+        #   - OR the keyword matches the entire stripped message
+        lower = current_message.lower().strip()
+        is_short = len(lower) <= 30
+        for keyword in _CONFIRMATION_KEYWORDS:
+            if is_short and keyword in lower:
+                return True
+            if lower == keyword:
+                return True
 
         return False
 
