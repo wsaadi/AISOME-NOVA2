@@ -39,6 +39,8 @@ You MUST NOT include `<<<FILE:` markers in your response until the user has conf
 - Never skip straight to generation, even if the description seems complete.
 - If the user says "just generate it": ask at minimum UI layout + tools/connectors, then confirm.
 
+<!-- GENERATION_PHASE_START -->
+
 ### Output Format
 When generating agent files, wrap each file in markers:
 
@@ -303,33 +305,115 @@ import axios from 'axios';                     // FORBIDDEN
 import { LineChart } from 'recharts';          // FORBIDDEN
 ```
 
-#### Available Components
-| Component | Purpose |
-|-----------|---------|
-| `<ChatPanel>` | Full chat interface (messages, input, streaming) |
-| `<FileUpload>` | File upload with drag-and-drop, progress |
-| `<ActionButton>` | Button with loading state |
-| `<DataTable>` | Configurable data table |
-| `<MarkdownView>` | Markdown rendering |
-| `<SettingsPanel>` | Settings panel (sliders, selects, toggles) |
+#### Component Props — EXACT signatures (use these EXACTLY, no guessing)
 
-#### Available Hooks
-| Hook | Purpose |
-|------|---------|
-| `useAgent(slug, sessionId)` | Send messages, get history, streaming, state |
-| `useAgentStorage(slug)` | Upload, download, list files |
-| `useWebSocket({ token, onMessage })` | Real-time WebSocket connection |
-
-#### ChatPanel Props
+**ChatPanel** — Full chat UI
 ```tsx
 <ChatPanel
-  messages={messages}                    // ChatMessage[]
-  onSendMessage={(msg) => sendMessage(msg)}  // (string) => void
-  isLoading={isLoading}                  // boolean
-  streamingContent={streamingContent}    // string
-  placeholder="Type a message..."        // string (optional)
-  disabled={false}                       // boolean (optional)
+  messages={messages}                          // ChatMessage[] (REQUIRED)
+  onSendMessage={(msg) => sendMessage(msg)}    // (string) => Promise<void> (REQUIRED)
+  isLoading={isLoading}                        // boolean (optional)
+  streamingContent={streamingContent}          // string (optional)
+  placeholder="Type a message..."              // string (optional)
+  disabled={false}                             // boolean (optional)
 />
+```
+
+**FileUpload** — File upload with drag-and-drop
+```tsx
+<FileUpload
+  onUpload={(file) => storage.upload(file)}    // (File) => Promise<string> (REQUIRED)
+  accept=".pdf,.docx"                          // string (optional)
+  multiple={false}                             // boolean (optional, default false)
+  maxSize={52428800}                           // number in bytes (optional, default 50MB)
+  label="Upload a file"                        // string (optional)
+  disabled={false}                             // boolean (optional)
+/>
+```
+**WARNING:** The prop is `onUpload`, NOT `onChange`. Do NOT use `onChange`.
+
+**ActionButton** — Button with loading state
+```tsx
+<ActionButton
+  label="Click me"                             // string (REQUIRED) — button text
+  onClick={() => doSomething()}                // () => void | Promise<void> (REQUIRED)
+  icon={<SomeIcon />}                          // ReactNode (optional)
+  loading={isProcessing}                       // boolean (optional, default false)
+/>
+```
+**WARNING:** Use `label` prop for text. Do NOT use children (`<ActionButton>text</ActionButton>` is WRONG).
+
+**DataTable** — Configurable data table
+```tsx
+<DataTable
+  columns={[                                   // Column[] (REQUIRED)
+    { key: 'name', label: 'Name' },
+    { key: 'value', label: 'Value', align: 'right' },
+    { key: 'status', label: 'Status', render: (val) => <span>{val}</span> },
+  ]}
+  rows={data}                                  // Record<string, unknown>[] (REQUIRED)
+  emptyMessage="No data"                       // string (optional)
+  dense={false}                                // boolean (optional)
+/>
+```
+
+**MarkdownView** — Render markdown content
+```tsx
+<MarkdownView content={markdownString} />      // content: string (REQUIRED)
+```
+
+**SettingsPanel** — Settings with controls
+```tsx
+<SettingsPanel
+  settings={[                                  // SettingDefinition[] (REQUIRED)
+    { key: 'temp', label: 'Temperature', type: 'slider', min: 0, max: 1, step: 0.1 },
+    { key: 'model', label: 'Model', type: 'select', options: ['gpt-4', 'claude'] },
+    { key: 'verbose', label: 'Verbose', type: 'toggle' },
+  ]}
+  values={settingsValues}                      // Record<string, unknown> (REQUIRED)
+  onChange={(newValues) => setSettings(newValues)} // (Record<string, unknown>) => void (REQUIRED)
+  title="Settings"                             // string (optional)
+/>
+```
+
+#### Hook Signatures — EXACT return types
+
+**useAgent(slug, sessionId)**
+```tsx
+const {
+  sendMessage,       // (content: string, metadata?: Record<string, unknown>) => Promise<void>
+  messages,          // ChatMessage[]
+  isLoading,         // boolean
+  streamingContent,  // string
+  progress,          // number (0-100)
+  progressMessage,   // string
+  error,             // string | null
+  clearMessages,     // () => void
+  loadSession,       // (sessionId: string) => Promise<void>
+} = useAgent(agent.slug, sessionId);
+```
+
+**useAgentStorage(slug)**
+```tsx
+const {
+  upload,            // (file: File, path?: string) => Promise<string>
+  download,          // (key: string) => Promise<Blob>
+  listFiles,         // (prefix?: string) => Promise<StorageFile[]>
+  deleteFile,        // (key: string) => Promise<boolean>
+  isUploading,       // boolean
+  uploadProgress,    // number (0-100)
+  error,             // string | null
+} = useAgentStorage(agent.slug);
+```
+**WARNING:** Methods are `upload`/`download`, NOT `uploadFile`/`downloadFile`.
+
+**useWebSocket(options)**
+```tsx
+const { isConnected, sendMessage, reconnect } = useWebSocket({
+  token: authToken,                            // string (REQUIRED)
+  onMessage: (msg) => handleMessage(msg),      // (WebSocketMessage) => void (optional)
+  autoReconnect: true,                         // boolean (optional, default true)
+});
 ```
 
 ### 8. styles.ts Pattern
