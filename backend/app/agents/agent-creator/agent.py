@@ -132,13 +132,19 @@ class AgentCreatorAgent(BaseAgent):
 
         context.set_progress(10, t("agent_creator.progress.loading_prompt", lang))
 
-        # Load the system prompt with all framework specs
-        system_prompt = self._load_system_prompt()
-
-        context.set_progress(20, t("agent_creator.progress.loading_history", lang))
-
         # Get conversation history for continuity
+        context.set_progress(20, t("agent_creator.progress.loading_history", lang))
         history = await context.memory.get_history(limit=50) if context.memory else []
+
+        # Count user messages to determine conversation phase
+        user_msg_count = sum(
+            1 for msg in history if (getattr(msg, "role", "user") == "user")
+        ) + 1
+        in_generation_phase = user_msg_count >= 4
+
+        # Load system prompt — question-only version in early phase
+        # so the LLM literally cannot see file format instructions
+        system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
 
         # Build the full conversation for the LLM
         conversation = self._build_conversation(history, message)
@@ -155,19 +161,8 @@ class AgentCreatorAgent(BaseAgent):
 
         context.set_progress(70, t("agent_creator.progress.processing", lang))
 
-        # Count user messages to determine if we're still in question phase
-        user_msg_count = sum(
-            1 for msg in history if (getattr(msg, "role", "user") == "user")
-        ) + 1  # +1 for current message
-
         # Extract any generated files from the response
         files = self._extract_files(llm_response)
-
-        # Hard guard: if conversation is too short, strip any files the LLM
-        # generated prematurely and return only the conversational text.
-        if files and user_msg_count < 4:
-            llm_response = self._clean_response(llm_response)
-            files = {}
         clean_response = llm_response
 
         metadata: dict = {"phase": "conversation"}
@@ -238,9 +233,17 @@ class AgentCreatorAgent(BaseAgent):
         Yields:
             AgentResponseChunk avec les tokens progressifs
         """
-        system_prompt = self._load_system_prompt()
         history = await context.memory.get_history(limit=50) if context.memory else []
         conversation = self._build_conversation(history, message)
+
+        # Count user messages for question-phase enforcement
+        user_msg_count = sum(
+            1 for msg in history if (getattr(msg, "role", "user") == "user")
+        ) + 1
+        in_generation_phase = user_msg_count >= 4
+
+        # Only give the LLM the generation instructions when ready
+        system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
 
         accumulated = ""
         async for token in context.llm.stream(
@@ -254,30 +257,79 @@ class AgentCreatorAgent(BaseAgent):
 
         # After streaming completes, check for generated files
         files = self._extract_files(accumulated)
-        if files and context.storage:
-            slug = self._extract_slug_from_files(files)
-            for filepath, content in files.items():
-                storage_key = f"generated/{slug}/{filepath}"
-                await context.storage.put(
-                    storage_key,
-                    content.encode("utf-8"),
-                    "text/plain",
-                )
 
-        yield AgentResponseChunk(
-            content="",
-            is_final=True,
-            metadata={"files": files} if files else {},
-        )
+        if files:
+            # Auto-generate agent.json for import compatibility
+            files = self._inject_agent_json(files)
+
+            slug = self._extract_slug_from_files(files)
+            validation = self._validate_generated_files(files, context.lang)
+
+            if context.storage:
+                for filepath, content in files.items():
+                    storage_key = f"generated/{slug}/{filepath}"
+                    await context.storage.put(
+                        storage_key,
+                        content.encode("utf-8"),
+                        "text/plain",
+                    )
+
+            yield AgentResponseChunk(
+                content="",
+                is_final=True,
+                metadata={
+                    "phase": "generated",
+                    "agent_slug": slug,
+                    "files": files,
+                    "validation": validation,
+                },
+            )
+        else:
+            yield AgentResponseChunk(
+                content="",
+                is_final=True,
+                metadata={},
+            )
 
     # =====================================================================
     # Private helpers
     # =====================================================================
 
-    def _load_system_prompt(self) -> str:
-        """Charge le system prompt depuis prompts/system.md."""
+    # Marker used to split the system prompt into question vs generation phases
+    _GENERATION_MARKER = "<!-- GENERATION_PHASE_START -->"
+
+    def _load_system_prompt(self, generation_phase: bool = True) -> str:
+        """
+        Charge le system prompt depuis prompts/system.md.
+
+        In question phase (generation_phase=False), only the first part of
+        the prompt is returned — the LLM literally does not see the file
+        format, framework spec, or code examples.  It can only ask questions.
+
+        Args:
+            generation_phase: If True, return the full prompt.
+                              If False, return only the question-phase portion.
+        """
         system_prompt_path = Path(__file__).parent / "prompts" / "system.md"
-        return system_prompt_path.read_text(encoding="utf-8")
+        full_prompt = system_prompt_path.read_text(encoding="utf-8")
+
+        if generation_phase:
+            return full_prompt
+
+        # Return only the part before the generation marker
+        marker_pos = full_prompt.find(self._GENERATION_MARKER)
+        if marker_pos == -1:
+            return full_prompt
+
+        question_prompt = full_prompt[:marker_pos].rstrip()
+        question_prompt += (
+            "\n\n---\n"
+            "You are currently in the QUESTION PHASE. "
+            "Your ONLY task is to ask ONE clarifying question per message. "
+            "Do NOT generate code, files, or technical specifications yet. "
+            "Just have a natural conversation to understand what the user needs."
+        )
+        return question_prompt
 
     def _build_conversation(
         self, history: list, message: UserMessage

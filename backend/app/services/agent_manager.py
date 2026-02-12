@@ -1,7 +1,10 @@
 import json
 import io
+import logging
+import re
 import zipfile
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +16,12 @@ from app.models.agent import Agent, AgentPermission
 from app.models.moderation import ModerationRule
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+# Filesystem roots for deploying framework agents
+_BACKEND_AGENTS_ROOT = Path(__file__).parent.parent / "agents"
+_FRONTEND_AGENTS_ROOT = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "agents"
+_FRONTEND_REGISTRY_PATH = _FRONTEND_AGENTS_ROOT / "registry.ts"
 
 
 class AgentManager:
@@ -86,12 +95,11 @@ class AgentManager:
         buffer = io.BytesIO(data)
         with zipfile.ZipFile(buffer, "r") as zf:
             names = zf.namelist()
+            is_framework = "backend/manifest.json" in names or "backend/agent.py" in names
 
             if "agent.json" in names:
-                # Standard export format
                 agent_json = json.loads(zf.read("agent.json"))
             elif "backend/manifest.json" in names:
-                # Agent Creator format — build agent.json from framework files
                 manifest = json.loads(zf.read("backend/manifest.json"))
                 system_prompt = ""
                 if "backend/prompts/system.md" in names:
@@ -118,6 +126,11 @@ class AgentManager:
                     f"Invalid archive: expected agent.json or backend/manifest.json. "
                     f"Found: {names[:10]}"
                 )
+
+            # ── Deploy framework files to filesystem ──
+            if is_framework:
+                slug_for_deploy = slug_override or agent_json.get("slug", "unknown-agent")
+                self._deploy_framework_files(zf, names, slug_for_deploy)
 
         slug = slug_override or agent_json["slug"]
         existing = await db.execute(select(Agent).where(Agent.slug == slug))
@@ -153,6 +166,86 @@ class AgentManager:
         await db.commit()
         await db.refresh(agent)
         return agent
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Framework file deployment
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _deploy_framework_files(
+        self, zf: zipfile.ZipFile, names: list[str], slug: str
+    ) -> None:
+        """
+        Deploy backend & frontend framework files from a ZIP to the filesystem
+        and update the frontend registry so the custom view is loaded.
+        """
+        # Sanitize slug — only allow safe characters
+        if not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$", slug):
+            logger.warning(f"Skipping deploy for invalid slug: {slug}")
+            return
+
+        # ── Backend files ──
+        backend_dir = _BACKEND_AGENTS_ROOT / slug
+        backend_dir.mkdir(parents=True, exist_ok=True)
+        (backend_dir / "prompts").mkdir(exist_ok=True)
+
+        file_mapping = {
+            "backend/manifest.json": backend_dir / "manifest.json",
+            "backend/agent.py": backend_dir / "agent.py",
+            "backend/prompts/system.md": backend_dir / "prompts" / "system.md",
+        }
+
+        for zip_path, fs_path in file_mapping.items():
+            if zip_path in names:
+                content = zf.read(zip_path)
+                fs_path.write_bytes(content)
+                logger.info(f"Deployed {zip_path} → {fs_path}")
+
+        # ── Frontend files ──
+        frontend_dir = _FRONTEND_AGENTS_ROOT / slug
+        frontend_dir.mkdir(parents=True, exist_ok=True)
+
+        frontend_mapping = {
+            "frontend/index.tsx": frontend_dir / "index.tsx",
+            "frontend/styles.ts": frontend_dir / "styles.ts",
+        }
+
+        has_frontend = False
+        for zip_path, fs_path in frontend_mapping.items():
+            if zip_path in names:
+                content = zf.read(zip_path)
+                fs_path.write_bytes(content)
+                has_frontend = True
+                logger.info(f"Deployed {zip_path} → {fs_path}")
+
+        # ── Update frontend registry ──
+        if has_frontend:
+            self._update_frontend_registry(slug)
+
+    def _update_frontend_registry(self, slug: str) -> None:
+        """
+        Add the agent to the frontend registry so its custom view is loaded.
+        Reads registry.ts, adds the lazy import if not already present, writes back.
+        """
+        if not _FRONTEND_REGISTRY_PATH.exists():
+            logger.warning(f"Frontend registry not found: {_FRONTEND_REGISTRY_PATH}")
+            return
+
+        content = _FRONTEND_REGISTRY_PATH.read_text(encoding="utf-8")
+
+        # Already registered?
+        if f"'{slug}'" in content:
+            logger.info(f"Agent '{slug}' already in frontend registry")
+            return
+
+        # Insert new entry before the closing '};'
+        new_entry = f"  '{slug}': lazy(() => import('./{slug}')),"
+        content = content.replace(
+            "};",
+            f"{new_entry}\n}};",
+        )
+
+        _FRONTEND_REGISTRY_PATH.write_text(content, encoding="utf-8")
+        logger.info(f"Frontend registry updated: added '{slug}'")
 
     async def duplicate_agent(
         self, db: AsyncSession, agent_id: UUID, new_name: str, new_slug: str,
