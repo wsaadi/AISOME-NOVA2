@@ -40,7 +40,11 @@ class LLMService:
     Service d'appel aux modèles LLM.
 
     L'agent ne choisit pas le provider/modèle — c'est configuré au niveau plateforme.
+    Supports both OpenAI-compatible and Anthropic native protocols.
     """
+
+    # Providers that use the Anthropic Messages API (not OpenAI-compatible)
+    _ANTHROPIC_PROVIDERS = {"anthropic"}
 
     def __init__(self, provider_slug: str, model_slug: str, api_key: str, base_url: str):
         self._provider_slug = provider_slug
@@ -62,25 +66,11 @@ class LLMService:
         """Token usage from the last chat/stream call."""
         return dict(self._last_usage)
 
-    async def chat(
-        self,
-        prompt: str,
-        system_prompt: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-    ) -> str:
-        """
-        Appel LLM non-streamé.
+    @property
+    def _is_anthropic(self) -> bool:
+        return self._provider_slug in self._ANTHROPIC_PROVIDERS
 
-        Args:
-            prompt: Message utilisateur / prompt
-            system_prompt: System prompt (optionnel, utilise celui de l'agent par défaut)
-            temperature: Température de génération (0.0 à 1.0)
-            max_tokens: Nombre max de tokens en sortie
-
-        Returns:
-            Texte de la réponse LLM
-        """
+    def _validate_config(self) -> None:
         if not self._base_url:
             raise ValueError(
                 "LLM base_url is not configured. "
@@ -91,13 +81,119 @@ class LLMService:
                 f"No API key found for provider '{self._provider_slug}'. "
                 "Please set the API key in Settings > LLM Providers."
             )
+
+    # ------------------------------------------------------------------
+    # Anthropic Messages API
+    # ------------------------------------------------------------------
+
+    async def _chat_anthropic(
+        self, prompt: str, system_prompt: Optional[str],
+        temperature: float, max_tokens: int,
+    ) -> str:
+        import httpx
+
+        headers = {
+            "x-api-key": self._api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        payload: dict[str, Any] = {
+            "model": self._model_slug,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
+        async with httpx.AsyncClient(timeout=llm_timeout) as client:
+            try:
+                response = await client.post(
+                    f"{self._base_url}/v1/messages",
+                    headers=headers, json=payload,
+                )
+                response.raise_for_status()
+            except httpx.ReadTimeout:
+                raise ValueError(
+                    f"Anthropic request timed out after 300s "
+                    f"(model={self._model_slug}, max_tokens={max_tokens})."
+                )
+            data = response.json()
+
+        usage = data.get("usage", {})
+        self._last_usage = {
+            "tokens_in": usage.get("input_tokens", 0),
+            "tokens_out": usage.get("output_tokens", 0),
+        }
+        content_blocks = data.get("content", [])
+        return "\n".join(
+            b["text"] for b in content_blocks if b.get("type") == "text"
+        )
+
+    async def _stream_anthropic(
+        self, prompt: str, system_prompt: Optional[str],
+        temperature: float, max_tokens: int,
+    ) -> AsyncIterator[str]:
+        import httpx
+        import json as _json
+
+        headers = {
+            "x-api-key": self._api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        payload: dict[str, Any] = {
+            "model": self._model_slug,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
+        async with httpx.AsyncClient(timeout=llm_timeout) as client:
+            async with client.stream(
+                "POST", f"{self._base_url}/v1/messages",
+                headers=headers, json=payload,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    raw = line[6:]
+                    if raw == "[DONE]":
+                        break
+                    event = _json.loads(raw)
+                    event_type = event.get("type", "")
+                    if event_type == "content_block_delta":
+                        text = event.get("delta", {}).get("text", "")
+                        if text:
+                            yield text
+                    elif event_type == "message_delta":
+                        usage = event.get("usage", {})
+                        if usage:
+                            self._last_usage = {
+                                "tokens_in": usage.get("input_tokens", 0),
+                                "tokens_out": usage.get("output_tokens", 0),
+                            }
+
+    # ------------------------------------------------------------------
+    # OpenAI-compatible API (default)
+    # ------------------------------------------------------------------
+
+    async def _chat_openai(
+        self, prompt: str, system_prompt: Optional[str],
+        temperature: float, max_tokens: int,
+    ) -> str:
         import httpx
 
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -110,70 +206,39 @@ class LLMService:
             "max_tokens": max_tokens,
         }
 
-        # Long read timeout: large generations (e.g. agent-creator with 16k tokens)
-        # can take several minutes on powerful models like Claude Opus.
         llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
         async with httpx.AsyncClient(timeout=llm_timeout) as client:
             try:
                 response = await client.post(
                     f"{self._base_url}/chat/completions",
-                    headers=headers,
-                    json=payload,
+                    headers=headers, json=payload,
                 )
                 response.raise_for_status()
             except httpx.ReadTimeout:
                 raise ValueError(
                     f"LLM request timed out after 300s "
-                    f"(model={self._model_slug}, max_tokens={max_tokens}). "
-                    "The generation may be too large. Try reducing max_tokens or simplifying the request."
+                    f"(model={self._model_slug}, max_tokens={max_tokens})."
                 )
             data = response.json()
 
-            # Track token usage from API response
-            usage = data.get("usage", {})
-            self._last_usage = {
-                "tokens_in": usage.get("prompt_tokens", 0),
-                "tokens_out": usage.get("completion_tokens", 0),
-            }
+        usage = data.get("usage", {})
+        self._last_usage = {
+            "tokens_in": usage.get("prompt_tokens", 0),
+            "tokens_out": usage.get("completion_tokens", 0),
+        }
+        return data["choices"][0]["message"]["content"]
 
-            return data["choices"][0]["message"]["content"]
-
-    async def stream(
-        self,
-        prompt: str,
-        system_prompt: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
+    async def _stream_openai(
+        self, prompt: str, system_prompt: Optional[str],
+        temperature: float, max_tokens: int,
     ) -> AsyncIterator[str]:
-        """
-        Appel LLM streamé — retourne les tokens un par un.
-
-        Args:
-            prompt: Message utilisateur / prompt
-            system_prompt: System prompt optionnel
-            temperature: Température de génération
-            max_tokens: Nombre max de tokens
-
-        Yields:
-            Tokens de la réponse au fur et à mesure
-        """
-        if not self._base_url:
-            raise ValueError(
-                "LLM base_url is not configured. "
-                "Please configure an LLM provider in Settings > LLM Providers."
-            )
-        if not self._api_key:
-            raise ValueError(
-                f"No API key found for provider '{self._provider_slug}'. "
-                "Please set the API key in Settings > LLM Providers."
-            )
         import httpx
+        import json as _json
 
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -190,18 +255,13 @@ class LLMService:
         llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
         async with httpx.AsyncClient(timeout=llm_timeout) as client:
             async with client.stream(
-                "POST",
-                f"{self._base_url}/chat/completions",
-                headers=headers,
-                json=payload,
+                "POST", f"{self._base_url}/chat/completions",
+                headers=headers, json=payload,
             ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if line.startswith("data: ") and line != "data: [DONE]":
-                        import json
-
-                        chunk = json.loads(line[6:])
-                        # Capture usage from final chunk (some providers include it)
+                        chunk = _json.loads(line[6:])
                         usage = chunk.get("usage")
                         if usage:
                             self._last_usage = {
@@ -212,6 +272,49 @@ class LLMService:
                         content = delta.get("content", "")
                         if content:
                             yield content
+
+    # ------------------------------------------------------------------
+    # Public interface (dispatches to the right protocol)
+    # ------------------------------------------------------------------
+
+    async def chat(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> str:
+        """
+        Appel LLM non-streamé.
+
+        Dispatches to Anthropic Messages API or OpenAI-compatible endpoint
+        depending on the configured provider.
+        """
+        self._validate_config()
+        if self._is_anthropic:
+            return await self._chat_anthropic(prompt, system_prompt, temperature, max_tokens)
+        return await self._chat_openai(prompt, system_prompt, temperature, max_tokens)
+
+    async def stream(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> AsyncIterator[str]:
+        """
+        Appel LLM streamé — retourne les tokens un par un.
+
+        Dispatches to Anthropic Messages API or OpenAI-compatible endpoint
+        depending on the configured provider.
+        """
+        self._validate_config()
+        if self._is_anthropic:
+            async for token in self._stream_anthropic(prompt, system_prompt, temperature, max_tokens):
+                yield token
+        else:
+            async for token in self._stream_openai(prompt, system_prompt, temperature, max_tokens):
+                yield token
 
 
 class ToolService:
