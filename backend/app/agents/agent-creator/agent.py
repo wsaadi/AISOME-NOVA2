@@ -3,10 +3,16 @@ Agent Creator — Creates complete NOVA2 agents from natural language descriptio
 
 Interactive workflow:
     1. User describes the agent they want
-    2. Clarifying questions are asked one at a time
+    2. Clarifying questions are asked one at a time (question phase)
     3. Requirements are confirmed with the user
-    4. All framework-compliant files are generated
+    4. All framework-compliant files are generated (generation phase)
     5. Generated code is validated and packaged for download
+
+The system prompt is split into two parts:
+  - QUESTION PHASE: The LLM only sees conversation rules, NOT file format.
+    This physically prevents premature code generation.
+  - GENERATION PHASE: The LLM sees the full spec including file markers,
+    framework reference, and code templates.
 """
 
 from __future__ import annotations
@@ -30,8 +36,22 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Validation constants
+# Constants
 # ---------------------------------------------------------------------------
+
+_GENERATION_MARKER = "<!-- GENERATION_INSTRUCTIONS_START -->"
+
+# Minimum number of user messages before we allow generation phase.
+# 1st = initial description, 2nd = answer to question, 3rd = confirmation
+_MIN_MESSAGES_FOR_GENERATION = 3
+
+# Keywords that signal the user wants to skip to generation or confirm
+_CONFIRMATION_KEYWORDS = [
+    "ok", "oui", "yes", "go", "génère", "genere", "generate",
+    "c'est bon", "c est bon", "parfait", "valide", "lance",
+    "fais-le", "fais le", "do it", "let's go", "lets go",
+    "confirm", "confirme", "approved", "approuvé",
+]
 
 FORBIDDEN_PYTHON_IMPORTS = [
     "import os", "from os",
@@ -90,17 +110,36 @@ class AgentCreatorAgent(BaseAgent):
         """
         Process a user message in the agent creation flow.
 
-        The LLM drives the conversation naturally — asking questions,
-        confirming requirements, then generating files when ready.
+        Phase detection:
+        - Question phase: LLM only sees conversation rules (cannot generate files)
+        - Generation phase: LLM sees full spec with file format and framework ref
+
+        Transition to generation when:
+        - At least 3 user messages exchanged, OR
+        - At least 2 user messages + user explicitly confirms
         """
         lang = context.lang
 
         context.set_progress(10, t("agent_creator.progress.loading_prompt", lang))
-        system_prompt = self._load_system_prompt()
 
+        # Determine conversation phase
         context.set_progress(20, t("agent_creator.progress.loading_history", lang))
         history = await context.memory.get_history(limit=50) if context.memory else []
-        conversation = self._build_conversation(history, message)
+        user_msg_count = sum(
+            1 for msg in history if getattr(msg, "role", "user") == "user"
+        ) + 1  # +1 for current message
+
+        in_generation_phase = self._should_enter_generation(
+            user_msg_count, message.content
+        )
+
+        # Load the appropriate system prompt
+        system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
+
+        # Build conversation
+        conversation = self._build_conversation(
+            history, message, in_generation_phase
+        )
 
         context.set_progress(30, t("agent_creator.progress.generating", lang))
         llm_response = await context.llm.chat(
@@ -112,34 +151,32 @@ class AgentCreatorAgent(BaseAgent):
 
         context.set_progress(70, t("agent_creator.progress.processing", lang))
 
-        # Try to extract generated files from the response
+        # Extract generated files (only possible in generation phase)
         files = self._extract_files(llm_response)
         metadata: dict = {"phase": "conversation"}
 
         if files:
             context.set_progress(80, t("agent_creator.progress.validating", lang))
 
-            # Add agent.json for platform import compatibility
             files = self._build_agent_json(files)
-
-            # Validate all generated files
             validation = self._validate(files, lang)
 
-            # Store files in MinIO
             slug = self._get_slug(files)
             stored_files: dict[str, str] = {}
             if context.storage:
                 for filepath, content in files.items():
                     key = f"generated/{slug}/{filepath}"
-                    await context.storage.put(key, content.encode("utf-8"), "text/plain")
+                    await context.storage.put(
+                        key, content.encode("utf-8"), "text/plain"
+                    )
                     stored_files[filepath] = key
 
-            # Clean the response for display
             display_text = self._strip_file_markers(llm_response)
 
-            # Append validation warnings if any
             if validation.get("warnings"):
-                display_text += f"\n\n---\n**{t('agent_creator.val.validation_warnings', lang)}**\n"
+                display_text += (
+                    f"\n\n---\n**{t('agent_creator.val.validation_warnings', lang)}**\n"
+                )
                 for warning in validation["warnings"]:
                     display_text += f"- {warning}\n"
 
@@ -154,7 +191,6 @@ class AgentCreatorAgent(BaseAgent):
 
         context.set_progress(100, t("agent_creator.progress.done", lang))
 
-        # Track token usage
         usage = context.llm.last_usage
         metadata["tokens_in"] = usage.get("tokens_in", 0)
         metadata["tokens_out"] = usage.get("tokens_out", 0)
@@ -167,11 +203,22 @@ class AgentCreatorAgent(BaseAgent):
         """
         Streaming version — sends tokens progressively.
 
-        Files are extracted and processed after the full response is accumulated.
+        Uses the same phase detection as handle_message.
+        Files are extracted after the full response is accumulated.
         """
-        system_prompt = self._load_system_prompt()
         history = await context.memory.get_history(limit=50) if context.memory else []
-        conversation = self._build_conversation(history, message)
+        user_msg_count = sum(
+            1 for msg in history if getattr(msg, "role", "user") == "user"
+        ) + 1
+
+        in_generation_phase = self._should_enter_generation(
+            user_msg_count, message.content
+        )
+
+        system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
+        conversation = self._build_conversation(
+            history, message, in_generation_phase
+        )
 
         accumulated = ""
         async for token in context.llm.stream(
@@ -183,7 +230,6 @@ class AgentCreatorAgent(BaseAgent):
             accumulated += token
             yield AgentResponseChunk(content=token)
 
-        # Process files after streaming completes
         files = self._extract_files(accumulated)
 
         if files:
@@ -194,7 +240,9 @@ class AgentCreatorAgent(BaseAgent):
             if context.storage:
                 for filepath, content in files.items():
                     key = f"generated/{slug}/{filepath}"
-                    await context.storage.put(key, content.encode("utf-8"), "text/plain")
+                    await context.storage.put(
+                        key, content.encode("utf-8"), "text/plain"
+                    )
 
             yield AgentResponseChunk(
                 content="",
@@ -210,23 +258,110 @@ class AgentCreatorAgent(BaseAgent):
             yield AgentResponseChunk(content="", is_final=True, metadata={})
 
     # ------------------------------------------------------------------
-    # Private helpers
+    # Phase detection
     # ------------------------------------------------------------------
 
-    def _load_system_prompt(self) -> str:
-        """Load the full system prompt from prompts/system.md."""
-        path = Path(__file__).parent / "prompts" / "system.md"
-        return path.read_text(encoding="utf-8")
+    def _should_enter_generation(
+        self, user_msg_count: int, current_message: str
+    ) -> bool:
+        """
+        Determine whether the conversation should enter generation phase.
 
-    def _build_conversation(self, history: list, message: UserMessage) -> str:
-        """Build the conversation string from history + current message for the LLM."""
+        Rules:
+        - Always question phase on the 1st message (user just described their idea)
+        - Generation allowed after 3+ user messages (enough Q&A happened)
+        - Generation allowed after 2+ user messages IF user explicitly confirms
+        """
+        if user_msg_count <= 1:
+            return False
+
+        if user_msg_count >= _MIN_MESSAGES_FOR_GENERATION:
+            return True
+
+        # Check for explicit confirmation keywords (2+ messages)
+        if user_msg_count >= 2:
+            lower = current_message.lower().strip()
+            for keyword in _CONFIRMATION_KEYWORDS:
+                if keyword in lower:
+                    return True
+
+        return False
+
+    # ------------------------------------------------------------------
+    # System prompt management
+    # ------------------------------------------------------------------
+
+    def _load_system_prompt(self, generation_phase: bool = False) -> str:
+        """
+        Load the system prompt, optionally truncated for question phase.
+
+        In question phase:
+          - Only the conversation flow rules are shown
+          - The LLM cannot see file markers, framework spec, or code templates
+          - A strong reminder is appended to force question-only behavior
+
+        In generation phase:
+          - The full prompt is returned including all framework reference
+        """
+        path = Path(__file__).parent / "prompts" / "system.md"
+        full_prompt = path.read_text(encoding="utf-8")
+
+        if generation_phase:
+            return full_prompt
+
+        # Question phase: strip everything after the generation marker
+        marker_pos = full_prompt.find(_GENERATION_MARKER)
+        if marker_pos == -1:
+            return full_prompt
+
+        question_prompt = full_prompt[:marker_pos].rstrip()
+        question_prompt += (
+            "\n\n---\n\n"
+            "## CURRENT STATUS: QUESTION PHASE\n\n"
+            "You are in the **QUESTION PHASE**. Your ONLY job right now:\n"
+            "1. Read the user's message\n"
+            "2. Ask ONE clarifying question to better understand their needs\n"
+            "3. Do NOT generate any code, files, or technical output\n"
+            "4. Do NOT use <<<FILE: markers — you don't have access to them yet\n"
+            "5. Keep your response conversational and focused\n\n"
+            "Once you have gathered enough information (purpose, workflow, UI layout, "
+            "tools/connectors), present a structured summary and ask for confirmation. "
+            "The system will then give you access to the generation instructions."
+        )
+        return question_prompt
+
+    # ------------------------------------------------------------------
+    # Conversation building
+    # ------------------------------------------------------------------
+
+    def _build_conversation(
+        self, history: list, message: UserMessage, generation_phase: bool
+    ) -> str:
+        """
+        Build the conversation string from history + current message.
+
+        Injects a system reminder during question phase to reinforce behavior.
+        """
         parts: list[str] = []
         for msg in history:
             role = getattr(msg, "role", "user")
             content = getattr(msg, "content", str(msg))
             parts.append(f"[{role}]: {content}")
+
         parts.append(f"[user]: {message.content}")
+
+        # In question phase, inject a reminder
+        if not generation_phase:
+            parts.append(
+                "[system]: REMINDER — You are still in the QUESTION PHASE. "
+                "Ask ONE clarifying question. Do NOT generate code or files."
+            )
+
         return "\n\n".join(parts)
+
+    # ------------------------------------------------------------------
+    # File extraction & cleaning
+    # ------------------------------------------------------------------
 
     def _extract_files(self, text: str) -> dict[str, str]:
         """Extract files from <<<FILE:path>>> ... <<<END_FILE>>> markers."""
@@ -234,7 +369,6 @@ class AgentCreatorAgent(BaseAgent):
         for match in _FILE_PATTERN.finditer(text):
             filepath = match.group(1).strip()
             content = match.group(2).strip()
-            # Strip markdown code fence wrappers if present
             content = re.sub(r"^```\w*\n", "", content)
             content = re.sub(r"\n```$", "", content)
             files[filepath] = content
@@ -242,9 +376,15 @@ class AgentCreatorAgent(BaseAgent):
 
     def _strip_file_markers(self, text: str) -> str:
         """Remove file markers from response, replacing with brief summaries."""
+
         def _replace(m: re.Match) -> str:
             return f"`{m.group(1).strip()}` — generated"
+
         return _FILE_PATTERN.sub(_replace, text).strip()
+
+    # ------------------------------------------------------------------
+    # Agent JSON generation
+    # ------------------------------------------------------------------
 
     def _get_slug(self, files: dict[str, str]) -> str:
         """Extract the agent slug from the generated manifest.json."""
@@ -289,6 +429,10 @@ class AgentCreatorAgent(BaseAgent):
         files["agent.json"] = json.dumps(agent_json, indent=2, ensure_ascii=False)
         return files
 
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
+
     def _validate(self, files: dict[str, str], lang: str = "en") -> dict:
         """
         Validate all generated files for framework compliance.
@@ -299,16 +443,9 @@ class AgentCreatorAgent(BaseAgent):
         errors: list[str] = []
         warnings: list[str] = []
 
-        # --- manifest.json ---
         self._validate_manifest(files, errors, lang)
-
-        # --- agent.py ---
         self._validate_agent_py(files, errors, warnings, lang)
-
-        # --- prompts/system.md ---
         self._validate_system_md(files, errors, warnings, lang)
-
-        # --- frontend/index.tsx ---
         self._validate_frontend(files, errors, lang)
 
         return {
@@ -329,12 +466,16 @@ class AgentCreatorAgent(BaseAgent):
         try:
             manifest = json.loads(raw)
         except json.JSONDecodeError as exc:
-            errors.append(t("agent_creator.val.manifest_invalid_json", lang, detail=str(exc)))
+            errors.append(
+                t("agent_creator.val.manifest_invalid_json", lang, detail=str(exc))
+            )
             return
 
         for field in ("name", "slug", "version", "description"):
             if field not in manifest:
-                errors.append(t("agent_creator.val.manifest_missing_field", lang, field=field))
+                errors.append(
+                    t("agent_creator.val.manifest_missing_field", lang, field=field)
+                )
 
         slug = manifest.get("slug", "")
         if slug and not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$", slug):
@@ -358,14 +499,17 @@ class AgentCreatorAgent(BaseAgent):
 
         for forbidden in FORBIDDEN_PYTHON_IMPORTS:
             if forbidden in code:
-                errors.append(t("agent_creator.val.forbidden_import", lang, name=forbidden))
+                errors.append(
+                    t("agent_creator.val.forbidden_import", lang, name=forbidden)
+                )
 
         for forbidden in FORBIDDEN_PYTHON_BUILTINS:
-            # Allow open() for manifest/prompt loading (max 2 occurrences)
             if forbidden == "open(" and code.count("open(") <= 2:
                 continue
             if forbidden in code:
-                errors.append(t("agent_creator.val.forbidden_builtin", lang, name=forbidden))
+                errors.append(
+                    t("agent_creator.val.forbidden_builtin", lang, name=forbidden)
+                )
 
     def _validate_system_md(
         self, files: dict[str, str], errors: list[str], warnings: list[str], lang: str
@@ -393,4 +537,10 @@ class AgentCreatorAgent(BaseAgent):
 
         for forbidden in FORBIDDEN_FRONTEND_IMPORTS:
             if forbidden in code:
-                errors.append(t("agent_creator.val.forbidden_frontend_import", lang, name=forbidden))
+                errors.append(
+                    t(
+                        "agent_creator.val.forbidden_frontend_import",
+                        lang,
+                        name=forbidden,
+                    )
+                )
