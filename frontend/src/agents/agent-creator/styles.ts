@@ -190,12 +190,18 @@ const styles = {
     fontSize: 12,
   },
 
-  // Download
+  // Download / Deploy
   downloadRow: {
     display: 'flex' as const,
     justifyContent: 'flex-end' as const,
+    gap: 8,
     padding: '8px 16px',
     borderTop: '1px solid var(--divider-color, #e0e0e0)',
+  },
+  deployMessage: {
+    padding: '6px 16px',
+    fontSize: 13,
+    fontWeight: 500,
   },
 
   // -- Chat --

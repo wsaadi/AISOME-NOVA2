@@ -16,14 +16,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Box, Typography, CircularProgress, Paper, IconButton, Tooltip, alpha, useTheme,
+  Button,
 } from '@mui/material';
-import { ArrowBack } from '@mui/icons-material';
+import { ArrowBack, CloudUpload } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import agentViews from '../agents/registry';
 import { AgentManifest } from 'framework/types';
 import { ChatPanel } from 'framework/components';
-import { useAgent } from 'framework/hooks';
+import { useAgent, useAgentStorage } from 'framework/hooks';
 
 /**
  * Generate a unique session ID for this agent session.
@@ -51,13 +52,89 @@ const getSessionId = (slug: string): string => {
 
 /**
  * Default Chat View — Used when an agent has no custom frontend.
- * Provides a basic ChatPanel-based interface.
+ *
+ * When the agent declares 'file_upload' in capabilities, a drop-zone /
+ * upload button is rendered above the chat panel so users can attach
+ * files for analysis (PDF, DOCX, etc.).
  */
 const DefaultAgentView: React.FC<{ agent: AgentManifest; sessionId: string }> = ({ agent, sessionId }) => {
-  const { sendMessage, messages, isLoading, streamingContent } = useAgent(agent.slug, sessionId);
+  const { sendMessage, messages, isLoading, streamingContent, progress, progressMessage } = useAgent(agent.slug, sessionId);
+  const storage = useAgentStorage(agent.slug);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const hasFileUpload = agent.capabilities?.includes('file_upload');
+
+  // Determine accepted file types from triggers config
+  const acceptTypes = React.useMemo(() => {
+    const trigger = agent.triggers?.find((t) => t.type === 'file_upload');
+    const accept = (trigger?.config as any)?.accept;
+    return Array.isArray(accept) ? accept.join(',') : '.pdf,.docx,.doc,.txt';
+  }, [agent.triggers]);
+
+  const handleFileUpload = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const key = await storage.upload(file);
+      await sendMessage(`Analyser le fichier: ${file.name}`, {
+        fileKey: key,
+        fileName: file.name,
+      });
+    } catch {
+      // Error is handled by the hook's error state
+    }
+    // Reset input so the same file can be re-uploaded
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [storage, sendMessage]);
 
   return (
     <Box sx={{ height: 'calc(100vh - 180px)', display: 'flex', flexDirection: 'column' }}>
+      {/* File upload area for agents with file_upload capability */}
+      {hasFileUpload && (
+        <Box sx={{
+          p: 1.5, px: 2,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          bgcolor: 'action.hover',
+        }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={acceptTypes}
+            style={{ display: 'none' }}
+            onChange={handleFileUpload}
+          />
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<CloudUpload />}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || storage.isUploading}
+          >
+            {storage.isUploading ? 'Upload...' : 'Uploader un fichier'}
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            {acceptTypes.replace(/\./g, '').toUpperCase()}
+          </Typography>
+        </Box>
+      )}
+
+      {/* Progress indicator */}
+      {isLoading && progress > 0 && (
+        <Box sx={{ px: 2, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="caption" color="text.secondary">
+            {progressMessage || `${progress}%`}
+          </Typography>
+          <Box sx={{ height: 2, bgcolor: 'divider', borderRadius: 1, overflow: 'hidden', mt: 0.5 }}>
+            <Box sx={{ height: '100%', bgcolor: 'primary.main', width: `${progress}%`, transition: 'width 0.3s' }} />
+          </Box>
+        </Box>
+      )}
+
       <ChatPanel
         messages={messages}
         onSendMessage={sendMessage}
@@ -99,18 +176,19 @@ const AgentRuntimePage: React.FC = () => {
         const dbRes = await api.get('/api/agents');
         const dbAgent = dbRes.data.find((a: any) => a.slug === slug);
         if (dbAgent) {
+          const cfg = dbAgent.config || {};
           setAgent({
             name: dbAgent.name,
             slug: dbAgent.slug,
             version: dbAgent.version || '1.0.0',
             description: dbAgent.description || '',
             author: '',
-            icon: 'smart_toy',
-            category: dbAgent.agent_type || 'general',
-            tags: [],
-            dependencies: { tools: [], connectors: [] },
-            triggers: [{ type: 'user_message', config: {} }],
-            capabilities: [],
+            icon: cfg.icon || 'smart_toy',
+            category: cfg.category || dbAgent.agent_type || 'general',
+            tags: cfg.tags || [],
+            dependencies: cfg.dependencies || { tools: [], connectors: [] },
+            triggers: cfg.triggers || [{ type: 'user_message', config: {} }],
+            capabilities: cfg.capabilities || [],
             min_platform_version: '1.0.0',
           });
         } else {

@@ -150,6 +150,8 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 
   // Track which files are expanded in the preview
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [deployStatus, setDeployStatus] = useState<'idle' | 'deploying' | 'success' | 'error'>('idle');
+  const [deployMessage, setDeployMessage] = useState('');
 
   // Extract generated files from conversation
   const generated = useMemo(() => extractGenerated(messages), [messages]);
@@ -189,6 +191,40 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, [generated]);
+
+  const handleDeploy = useCallback(async () => {
+    if (!generated) return;
+    setDeployStatus('deploying');
+    setDeployMessage('');
+
+    try {
+      const blob = buildZip(generated.files);
+      const formData = new FormData();
+      formData.append('file', blob, `${generated.slug}.zip`);
+
+      const token = localStorage.getItem('access_token');
+      const API_BASE = process.env.REACT_APP_API_URL || '';
+      const response = await fetch(`${API_BASE}/api/agents/import`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ detail: response.statusText }));
+        throw new Error(errData.detail || `Import failed (${response.status})`);
+      }
+
+      const data = await response.json();
+      setDeployStatus('success');
+      setDeployMessage(
+        t('agentCreator.deploySuccess', 'Agent "{{name}}" deployed! Open it from the catalog.').replace('{{name}}', data.name)
+      );
+    } catch (err) {
+      setDeployStatus('error');
+      setDeployMessage(err instanceof Error ? err.message : 'Deploy failed');
+    }
+  }, [generated, t]);
 
   // Sort files for display: agent.json last, others alphabetically
   const sortedFiles = useMemo(() => {
@@ -285,13 +321,31 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
             ))}
           </div>
 
-          {/* Download button */}
+          {/* Deploy + Download buttons */}
           <div style={styles.downloadRow}>
+            <ActionButton
+              label={
+                deployStatus === 'deploying'
+                  ? t('agentCreator.deploying', 'Deploying...')
+                  : t('agentCreator.deploy', 'Deploy to platform')
+              }
+              onClick={handleDeploy}
+              loading={deployStatus === 'deploying'}
+              disabled={deployStatus === 'deploying'}
+            />
             <ActionButton
               label={`${t('agentCreator.downloadZip', 'Download ZIP')} (${generated.slug}.zip)`}
               onClick={handleDownloadZip}
             />
           </div>
+          {deployMessage && (
+            <div style={{
+              ...styles.deployMessage,
+              color: deployStatus === 'success' ? '#2e7d32' : '#d32f2f',
+            }}>
+              {deployMessage}
+            </div>
+          )}
         </div>
       )}
 
