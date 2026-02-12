@@ -85,7 +85,39 @@ class AgentManager:
     ) -> Agent:
         buffer = io.BytesIO(data)
         with zipfile.ZipFile(buffer, "r") as zf:
-            agent_json = json.loads(zf.read("agent.json"))
+            names = zf.namelist()
+
+            if "agent.json" in names:
+                # Standard export format
+                agent_json = json.loads(zf.read("agent.json"))
+            elif "backend/manifest.json" in names:
+                # Agent Creator format — build agent.json from framework files
+                manifest = json.loads(zf.read("backend/manifest.json"))
+                system_prompt = ""
+                if "backend/prompts/system.md" in names:
+                    system_prompt = zf.read("backend/prompts/system.md").decode("utf-8")
+                agent_json = {
+                    "name": manifest.get("name", "Imported Agent"),
+                    "slug": manifest.get("slug", "imported-agent"),
+                    "description": manifest.get("description", ""),
+                    "version": manifest.get("version", "1.0.0"),
+                    "agent_type": manifest.get("category", "conversational"),
+                    "config": {
+                        "icon": manifest.get("icon", "smart_toy"),
+                        "category": manifest.get("category", "general"),
+                        "tags": manifest.get("tags", []),
+                        "dependencies": manifest.get("dependencies", {}),
+                        "triggers": manifest.get("triggers", []),
+                        "capabilities": manifest.get("capabilities", []),
+                    },
+                    "system_prompt": system_prompt,
+                    "moderation_rules": [],
+                }
+            else:
+                raise ValueError(
+                    f"Invalid archive: expected agent.json or backend/manifest.json. "
+                    f"Found: {names[:10]}"
+                )
 
         slug = slug_override or agent_json["slug"]
         existing = await db.execute(select(Agent).where(Agent.slug == slug))
