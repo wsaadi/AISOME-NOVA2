@@ -271,6 +271,9 @@ class AgentCreatorAgent(BaseAgent):
         """
         Construit le prompt complet avec historique de conversation.
 
+        Injecte un rappel pour forcer la phase de questions si la conversation
+        est encore courte (< 4 échanges).
+
         Args:
             history: Messages précédents de la session
             message: Message actuel de l'utilisateur
@@ -286,6 +289,15 @@ class AgentCreatorAgent(BaseAgent):
             parts.append(f"[{role}]: {content}")
 
         parts.append(f"[user]: {message.content}")
+
+        # If conversation is short, remind the LLM to ask questions first
+        user_msg_count = sum(1 for msg in history if (getattr(msg, "role", "user") == "user")) + 1
+        if user_msg_count < 4:
+            parts.append(
+                "[system]: REMINDER — You are still in the question phase. "
+                "Do NOT generate files yet (no <<<FILE:>>> markers). "
+                "Ask the next clarifying question, one at a time."
+            )
 
         return "\n\n".join(parts)
 

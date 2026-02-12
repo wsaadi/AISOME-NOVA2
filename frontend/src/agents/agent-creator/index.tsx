@@ -39,37 +39,60 @@ const extractFilesFromMessages = (
 };
 
 /**
- * Builds a ZIP file in-browser from a record of filepath→content entries
- * using the standard ZIP format (no external library needed).
+ * CRC-32 lookup table (IEEE 802.3 polynomial).
+ */
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c;
+  }
+  return table;
+})();
+
+const crc32 = (data: Uint8Array): number => {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) {
+    crc = CRC_TABLE[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+};
+
+/**
+ * Builds a valid ZIP file in-browser from a record of filepath->content entries.
  */
 const buildZip = (files: Record<string, string>): Blob => {
   const encoder = new TextEncoder();
-  const entries: { name: Uint8Array; data: Uint8Array; offset: number }[] = [];
+  const entries: { name: Uint8Array; data: Uint8Array; crc: number; offset: number }[] = [];
   const parts: Uint8Array[] = [];
   let offset = 0;
 
   for (const [filepath, content] of Object.entries(files)) {
     const nameBytes = encoder.encode(filepath);
     const dataBytes = encoder.encode(content);
+    const crc = crc32(dataBytes);
 
-    // Local file header
+    // Local file header (30 bytes)
     const header = new ArrayBuffer(30);
     const view = new DataView(header);
-    view.setUint32(0, 0x04034b50, true); // signature
-    view.setUint16(4, 20, true);         // version needed
-    view.setUint16(6, 0, true);          // flags
-    view.setUint16(8, 0, true);          // compression: stored
-    view.setUint16(10, 0, true);         // mod time
-    view.setUint16(12, 0, true);         // mod date
-    view.setUint32(14, 0, true);         // crc-32 (0 for stored)
-    view.setUint32(18, dataBytes.length, true); // compressed size
-    view.setUint32(22, dataBytes.length, true); // uncompressed size
-    view.setUint16(26, nameBytes.length, true); // name length
-    view.setUint16(28, 0, true);         // extra field length
+    view.setUint32(0, 0x04034b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(6, 0, true);
+    view.setUint16(8, 0, true);   // stored
+    view.setUint16(10, 0, true);
+    view.setUint16(12, 0, true);
+    view.setUint32(14, crc, true);
+    view.setUint32(18, dataBytes.length, true);
+    view.setUint32(22, dataBytes.length, true);
+    view.setUint16(26, nameBytes.length, true);
+    view.setUint16(28, 0, true);
 
     const headerArr = new Uint8Array(header);
     parts.push(headerArr, nameBytes, dataBytes);
-    entries.push({ name: nameBytes, data: dataBytes, offset });
+    entries.push({ name: nameBytes, data: dataBytes, crc, offset });
     offset += headerArr.length + nameBytes.length + dataBytes.length;
   }
 
@@ -78,22 +101,22 @@ const buildZip = (files: Record<string, string>): Blob => {
   for (const entry of entries) {
     const cd = new ArrayBuffer(46);
     const cdv = new DataView(cd);
-    cdv.setUint32(0, 0x02014b50, true);  // central dir signature
-    cdv.setUint16(4, 20, true);          // version made by
-    cdv.setUint16(6, 20, true);          // version needed
-    cdv.setUint16(8, 0, true);           // flags
-    cdv.setUint16(10, 0, true);          // compression
-    cdv.setUint16(12, 0, true);          // mod time
-    cdv.setUint16(14, 0, true);          // mod date
-    cdv.setUint32(16, 0, true);          // crc-32
+    cdv.setUint32(0, 0x02014b50, true);
+    cdv.setUint16(4, 20, true);
+    cdv.setUint16(6, 20, true);
+    cdv.setUint16(8, 0, true);
+    cdv.setUint16(10, 0, true);
+    cdv.setUint16(12, 0, true);
+    cdv.setUint16(14, 0, true);
+    cdv.setUint32(16, entry.crc, true);
     cdv.setUint32(20, entry.data.length, true);
     cdv.setUint32(24, entry.data.length, true);
     cdv.setUint16(28, entry.name.length, true);
-    cdv.setUint16(30, 0, true);          // extra length
-    cdv.setUint16(32, 0, true);          // comment length
-    cdv.setUint16(34, 0, true);          // disk number start
-    cdv.setUint16(36, 0, true);          // internal attributes
-    cdv.setUint32(38, 0, true);          // external attributes
+    cdv.setUint16(30, 0, true);
+    cdv.setUint16(32, 0, true);
+    cdv.setUint16(34, 0, true);
+    cdv.setUint16(36, 0, true);
+    cdv.setUint32(38, 0, true);
     cdv.setUint32(42, entry.offset, true);
 
     const cdArr = new Uint8Array(cd);
