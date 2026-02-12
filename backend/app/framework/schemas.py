@@ -37,6 +37,7 @@ class TriggerType(str, Enum):
     WEBHOOK = "webhook"
     CRON = "cron"
     EVENT = "event"
+    FILE_UPLOAD = "file_upload"
 
 
 class JobStatus(str, Enum):
