@@ -28,7 +28,7 @@ export interface AgentManifest {
 }
 
 export interface AgentTrigger {
-  type: 'user_message' | 'webhook' | 'cron' | 'event';
+  type: 'user_message' | 'webhook' | 'cron' | 'event' | 'file_upload';
   config: Record<string, unknown>;
 }
 
