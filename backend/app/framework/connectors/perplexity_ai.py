@@ -96,17 +96,12 @@ class PerplexityConnector(BaseConnector):
         )
 
     async def connect(self, config: dict[str, Any]) -> None:
-        """Initialise le client HTTP Perplexity."""
-        import httpx
+        """Initialise le client Perplexity via le SDK OpenAI (API compatible)."""
+        import openai
 
-        self._base_url = config.get("base_url", "https://api.perplexity.ai")
-        self._client = httpx.AsyncClient(
-            base_url=self._base_url,
-            headers={
-                "Authorization": f"Bearer {config['api_key']}",
-                "Content-Type": "application/json",
-            },
-            timeout=120.0,
+        self._client = openai.AsyncOpenAI(
+            api_key=config["api_key"],
+            base_url=config.get("base_url") or "https://api.perplexity.ai",
         )
 
     async def execute(self, action: str, params: dict[str, Any]) -> ConnectorResult:
@@ -117,19 +112,20 @@ class PerplexityConnector(BaseConnector):
         return self.error(f"Action inconnue: {action}", ConnectorErrorCode.INVALID_ACTION)
 
     async def disconnect(self) -> None:
-        """Ferme le client HTTP."""
-        if hasattr(self, "_client"):
-            await self._client.aclose()
+        """Ferme le client Perplexity."""
+        if hasattr(self, "_client") and self._client:
+            await self._client.close()
+            self._client = None
 
     async def health_check(self) -> bool:
         """Vérifie l'accès à l'API Perplexity."""
         try:
-            resp = await self._client.post("/chat/completions", json={
-                "model": "sonar",
-                "messages": [{"role": "user", "content": "test"}],
-                "max_tokens": 1,
-            })
-            return resp.status_code in (200, 400)
+            await self._client.chat.completions.create(
+                model="sonar",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1,
+            )
+            return True
         except Exception:
             return False
 
@@ -141,11 +137,12 @@ class PerplexityConnector(BaseConnector):
         return self.success({"models": models, "count": len(models)})
 
     async def _chat(self, params: dict[str, Any]) -> ConnectorResult:
+        import openai
+
         model = params.get("model", "sonar")
         messages = list(params.get("messages", []))
         temperature = params.get("temperature", 0.2)
         max_tokens = params.get("max_tokens", 4096)
-        return_citations = params.get("return_citations", True)
 
         system_prompt = params.get("system_prompt")
         if system_prompt:
@@ -154,40 +151,45 @@ class PerplexityConnector(BaseConnector):
         if not messages:
             return self.error("messages requis", ConnectorErrorCode.INVALID_PARAMS)
 
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-
+        # Perplexity-specific extra params via extra_body
+        extra_body: dict[str, Any] = {}
         if params.get("search_recency_filter"):
-            payload["search_recency_filter"] = params["search_recency_filter"]
-        if return_citations:
-            payload["return_citations"] = True
+            extra_body["search_recency_filter"] = params["search_recency_filter"]
+        if params.get("return_citations", True):
+            extra_body["return_citations"] = True
 
         try:
-            resp = await self._client.post("/chat/completions", json=payload)
+            response = await self._client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                extra_body=extra_body or None,
+            )
+            choice = response.choices[0]
 
-            if resp.status_code == 401:
-                return self.error("API key Perplexity invalide", ConnectorErrorCode.AUTH_FAILED)
-            if resp.status_code == 429:
-                return self.error("Rate limit Perplexity", ConnectorErrorCode.RATE_LIMITED)
-            if resp.status_code != 200:
-                return self.error(
-                    f"Perplexity API {resp.status_code}: {resp.text[:300]}",
-                    ConnectorErrorCode.EXTERNAL_API_ERROR,
-                )
-
-            data = resp.json()
-            choice = data["choices"][0]
+            # Citations are in the raw response (Perplexity extension)
+            citations = getattr(response, "citations", [])
 
             return self.success({
-                "content": choice["message"]["content"],
-                "model": data.get("model", model),
-                "citations": data.get("citations", []),
-                "usage": data.get("usage", {}),
-                "finish_reason": choice.get("finish_reason", ""),
+                "content": choice.message.content or "",
+                "model": response.model,
+                "citations": citations,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                } if response.usage else {},
+                "finish_reason": choice.finish_reason or "",
             })
+        except openai.AuthenticationError:
+            return self.error("API key Perplexity invalide", ConnectorErrorCode.AUTH_FAILED)
+        except openai.RateLimitError:
+            return self.error("Rate limit Perplexity", ConnectorErrorCode.RATE_LIMITED)
+        except openai.APIStatusError as e:
+            return self.error(
+                f"Perplexity API {e.status_code}: {e.message}",
+                ConnectorErrorCode.EXTERNAL_API_ERROR,
+            )
         except Exception as e:
             return self.error(f"Perplexity error: {e}", ConnectorErrorCode.PROCESSING_ERROR)

@@ -11,6 +11,12 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.6
 httpx[http2]==0.26.0
+# LLM Provider SDKs
+anthropic==0.79.0
+openai==2.20.0
+mistralai==1.12.1
+google-genai==1.63.0
+# Infrastructure
 hvac==2.1.0
 minio==7.2.3
 gliner==0.2.5

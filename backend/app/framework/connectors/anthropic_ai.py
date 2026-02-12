@@ -88,19 +88,12 @@ class AnthropicConnector(BaseConnector):
         )
 
     async def connect(self, config: dict[str, Any]) -> None:
-        """Initialise le client HTTP Anthropic."""
-        import httpx
+        """Initialise le client Anthropic via le SDK officiel."""
+        import anthropic
 
-        self._base_url = config.get("base_url", "https://api.anthropic.com")
-        self._client = httpx.AsyncClient(
-            base_url=self._base_url,
-            headers={
-                "x-api-key": config["api_key"],
-                "anthropic-version": config.get("anthropic_version", "2023-06-01"),
-                "Content-Type": "application/json",
-            },
-            timeout=120.0,
-            http2=True,
+        self._client = anthropic.AsyncAnthropic(
+            api_key=config["api_key"],
+            base_url=config.get("base_url") or "https://api.anthropic.com",
         )
 
     async def execute(self, action: str, params: dict[str, Any]) -> ConnectorResult:
@@ -111,19 +104,20 @@ class AnthropicConnector(BaseConnector):
         return self.error(f"Action inconnue: {action}", ConnectorErrorCode.INVALID_ACTION)
 
     async def disconnect(self) -> None:
-        """Ferme le client HTTP."""
-        if hasattr(self, "_client"):
-            await self._client.aclose()
+        """Ferme le client Anthropic."""
+        if hasattr(self, "_client") and self._client:
+            await self._client.close()
+            self._client = None
 
     async def health_check(self) -> bool:
         """Vérifie que l'API key est valide via un appel minimal."""
         try:
-            resp = await self._client.post("/v1/messages", json={
-                "model": "claude-3-5-haiku-20241022",
-                "max_tokens": 1,
-                "messages": [{"role": "user", "content": "hi"}],
-            })
-            return resp.status_code in (200, 400)  # 400 = bad request mais auth OK
+            await self._client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=1,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+            return True
         except Exception:
             return False
 
@@ -131,6 +125,8 @@ class AnthropicConnector(BaseConnector):
         return self.success({"models": ANTHROPIC_MODELS, "count": len(ANTHROPIC_MODELS)})
 
     async def _chat(self, params: dict[str, Any]) -> ConnectorResult:
+        import anthropic
+
         model = params.get("model", "claude-sonnet-4-20250514")
         messages = params.get("messages", [])
         system_prompt = params.get("system_prompt", "")
@@ -140,42 +136,38 @@ class AnthropicConnector(BaseConnector):
         if not messages:
             return self.error("messages requis", ConnectorErrorCode.INVALID_PARAMS)
 
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-        if system_prompt:
-            payload["system"] = system_prompt
-
         try:
-            resp = await self._client.post("/v1/messages", json=payload)
+            kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            if system_prompt:
+                kwargs["system"] = system_prompt
 
-            if resp.status_code == 401:
-                return self.error("API key Anthropic invalide", ConnectorErrorCode.AUTH_FAILED)
-            if resp.status_code == 429:
-                return self.error("Rate limit Anthropic", ConnectorErrorCode.RATE_LIMITED)
-            if resp.status_code != 200:
-                return self.error(
-                    f"Anthropic API {resp.status_code}: {resp.text[:300]}",
-                    ConnectorErrorCode.EXTERNAL_API_ERROR,
-                )
+            message = await self._client.messages.create(**kwargs)
 
-            data = resp.json()
-            # Extraire le texte du premier content block
-            content_blocks = data.get("content", [])
-            text_parts = [
-                block["text"] for block in content_blocks
-                if block.get("type") == "text"
-            ]
-            content = "\n".join(text_parts)
-
+            content = "\n".join(
+                b.text for b in message.content if b.type == "text"
+            )
             return self.success({
                 "content": content,
-                "model": data.get("model", model),
-                "usage": data.get("usage", {}),
-                "stop_reason": data.get("stop_reason", ""),
+                "model": message.model,
+                "usage": {
+                    "input_tokens": message.usage.input_tokens,
+                    "output_tokens": message.usage.output_tokens,
+                },
+                "stop_reason": message.stop_reason or "",
             })
+        except anthropic.AuthenticationError:
+            return self.error("API key Anthropic invalide", ConnectorErrorCode.AUTH_FAILED)
+        except anthropic.RateLimitError:
+            return self.error("Rate limit Anthropic", ConnectorErrorCode.RATE_LIMITED)
+        except anthropic.APIStatusError as e:
+            return self.error(
+                f"Anthropic API {e.status_code}: {e.message}",
+                ConnectorErrorCode.EXTERNAL_API_ERROR,
+            )
         except Exception as e:
             return self.error(f"Anthropic error: {e}", ConnectorErrorCode.PROCESSING_ERROR)
