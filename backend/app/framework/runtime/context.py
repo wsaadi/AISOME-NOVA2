@@ -121,13 +121,23 @@ class LLMService:
             "max_tokens": max_tokens,
         }
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self._base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
+        # Long read timeout: large generations (e.g. agent-creator with 16k tokens)
+        # can take several minutes on powerful models like Claude Opus.
+        llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
+        async with httpx.AsyncClient(timeout=llm_timeout) as client:
+            try:
+                response = await client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+            except httpx.ReadTimeout:
+                raise ValueError(
+                    f"LLM request timed out after 300s "
+                    f"(model={self._model_slug}, max_tokens={max_tokens}). "
+                    "The generation may be too large. Try reducing max_tokens or simplifying the request."
+                )
             data = response.json()
 
             # Track token usage from API response
@@ -193,7 +203,8 @@ class LLMService:
             "stream": True,
         }
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        llm_timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
+        async with httpx.AsyncClient(timeout=llm_timeout) as client:
             async with client.stream(
                 "POST",
                 f"{self._base_url}/chat/completions",
