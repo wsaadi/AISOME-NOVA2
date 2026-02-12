@@ -146,19 +146,22 @@ class AnthropicConnector(BaseConnector):
             if system_prompt:
                 kwargs["system"] = system_prompt
 
-            message = await self._client.messages.create(**kwargs)
+            # Use streaming to avoid "Streaming is required for long
+            # operations" restriction from Anthropic API.
+            chunks: list[str] = []
+            async with self._client.messages.stream(**kwargs) as stream:
+                async for text in stream.text_stream:
+                    chunks.append(text)
+                final_message = await stream.get_final_message()
 
-            content = "\n".join(
-                b.text for b in message.content if b.type == "text"
-            )
             return self.success({
-                "content": content,
-                "model": message.model,
+                "content": "".join(chunks),
+                "model": final_message.model,
                 "usage": {
-                    "input_tokens": message.usage.input_tokens,
-                    "output_tokens": message.usage.output_tokens,
+                    "input_tokens": final_message.usage.input_tokens,
+                    "output_tokens": final_message.usage.output_tokens,
                 },
-                "stop_reason": message.stop_reason or "",
+                "stop_reason": final_message.stop_reason or "",
             })
         except anthropic.AuthenticationError:
             return self.error("API key Anthropic invalide", ConnectorErrorCode.AUTH_FAILED)
