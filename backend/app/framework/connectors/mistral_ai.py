@@ -35,7 +35,7 @@ MISTRAL_MODELS = [
 
 
 class MistralConnector(BaseConnector):
-    """Connecteur Mistral AI — Chat, code et embeddings."""
+    """Connecteur Mistral AI — Chat, code et embeddings (via API OpenAI-compatible)."""
 
     @property
     def metadata(self) -> ConnectorMetadata:
@@ -104,10 +104,14 @@ class MistralConnector(BaseConnector):
         )
 
     async def connect(self, config: dict[str, Any]) -> None:
-        """Initialise le client Mistral via le SDK officiel."""
-        from mistralai import Mistral
+        """Initialise le client Mistral via l'API OpenAI-compatible."""
+        import openai
 
-        self._client = Mistral(api_key=config["api_key"])
+        base_url = config.get("base_url", "https://api.mistral.ai/v1")
+        self._client = openai.AsyncOpenAI(
+            api_key=config["api_key"],
+            base_url=base_url,
+        )
 
     async def execute(self, action: str, params: dict[str, Any]) -> ConnectorResult:
         if action == "list_models":
@@ -120,12 +124,14 @@ class MistralConnector(BaseConnector):
 
     async def disconnect(self) -> None:
         """Ferme le client Mistral."""
-        self._client = None
+        if hasattr(self, "_client") and self._client:
+            await self._client.close()
+            self._client = None
 
     async def health_check(self) -> bool:
         """Vérifie l'accès à l'API Mistral."""
         try:
-            await self._client.models.list_async()
+            await self._client.models.list()
             return True
         except Exception:
             return False
@@ -151,7 +157,9 @@ class MistralConnector(BaseConnector):
             return self.error("messages requis", ConnectorErrorCode.INVALID_PARAMS)
 
         try:
-            response = await self._client.chat.complete_async(
+            import openai
+
+            response = await self._client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
@@ -168,12 +176,11 @@ class MistralConnector(BaseConnector):
                 } if response.usage else {},
                 "finish_reason": choice.finish_reason or "",
             })
+        except openai.AuthenticationError:
+            return self.error("API key Mistral invalide", ConnectorErrorCode.AUTH_FAILED)
+        except openai.RateLimitError:
+            return self.error("Rate limit Mistral", ConnectorErrorCode.RATE_LIMITED)
         except Exception as e:
-            err_str = str(e).lower()
-            if "unauthorized" in err_str or "401" in err_str:
-                return self.error("API key Mistral invalide", ConnectorErrorCode.AUTH_FAILED)
-            if "rate" in err_str or "429" in err_str:
-                return self.error("Rate limit Mistral", ConnectorErrorCode.RATE_LIMITED)
             return self.error(f"Mistral error: {e}", ConnectorErrorCode.PROCESSING_ERROR)
 
     async def _create_embeddings(self, params: dict[str, Any]) -> ConnectorResult:
@@ -184,9 +191,9 @@ class MistralConnector(BaseConnector):
             return self.error("input requis", ConnectorErrorCode.INVALID_PARAMS)
 
         try:
-            response = await self._client.embeddings.create_async(
+            response = await self._client.embeddings.create(
                 model=model,
-                inputs=[input_text],
+                input=[input_text],
             )
             return self.success({
                 "embeddings": [item.embedding for item in response.data],
