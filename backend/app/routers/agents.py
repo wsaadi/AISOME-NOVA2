@@ -1,3 +1,5 @@
+import logging
+import zipfile
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -168,9 +170,31 @@ async def import_agent(
     current_user: User = Depends(require_permission("agents", "import")),
     db: AsyncSession = Depends(get_db),
 ):
+    logger = logging.getLogger(__name__)
     content = await file.read()
-    manager = get_agent_manager()
-    agent = await manager.import_agent(db, content, created_by=current_user.id)
+
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    # Validate ZIP before passing to manager
+    import io
+    try:
+        with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+            if "agent.json" not in zf.namelist():
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid agent archive: missing agent.json. Found: {zf.namelist()[:10]}",
+                )
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=422, detail="Invalid file: not a valid ZIP archive")
+
+    try:
+        manager = get_agent_manager()
+        agent = await manager.import_agent(db, content, created_by=current_user.id)
+    except Exception as e:
+        logger.exception("Failed to import agent")
+        raise HTTPException(status_code=500, detail=f"Import failed: {e}")
+
     return AgentResponse(
         id=agent.id, name=agent.name, slug=agent.slug, description=agent.description,
         version=agent.version, agent_type=agent.agent_type, config=agent.config,
