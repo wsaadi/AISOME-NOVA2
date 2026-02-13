@@ -88,6 +88,8 @@ class AgentInfo(BaseModel):
     icon: str = "smart_toy"
     category: str = "general"
     tags: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    triggers: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AgentLLMConfigRequest(BaseModel):
@@ -160,6 +162,8 @@ async def get_agent_catalog(
                 icon=m.icon,
                 category=m.category,
                 tags=m.tags,
+                capabilities=m.capabilities,
+                triggers=[tr.model_dump() for tr in m.triggers],
             )
             for m in engine.list_agents()
         ]
