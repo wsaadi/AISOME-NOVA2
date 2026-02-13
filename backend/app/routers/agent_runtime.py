@@ -24,7 +24,7 @@ import logging
 import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile
 from pydantic import BaseModel, Field
 
 from app.middleware.auth import get_current_user
@@ -511,3 +511,105 @@ async def list_sessions(
             sessions=[s.model_dump() for s in sessions],
             total=len(sessions),
         )
+
+
+# =============================================================================
+# Storage routes — /{slug}/storage/*
+# =============================================================================
+
+
+def _get_scoped_storage(slug: str, user_id: int):
+    """Create a ScopedAgentStorage for user × agent."""
+    from app.config import settings
+    from app.framework.storage.agent_storage import AgentStorageManager
+
+    manager = AgentStorageManager(
+        endpoint=settings.MINIO_ENDPOINT,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        bucket=settings.MINIO_STORAGE_BUCKET,
+        secure=settings.MINIO_SECURE,
+    )
+    return manager.scoped(user_id=user_id, agent_slug=slug)
+
+
+@router.post("/{slug}/storage/upload")
+async def storage_upload(
+    slug: str,
+    file: UploadFile = FastAPIFile(...),
+    path: Optional[str] = None,
+    current_user=Depends(get_current_user),
+):
+    """Upload un fichier dans le stockage de l'agent."""
+    storage = _get_scoped_storage(slug, current_user.id)
+
+    content = await file.read()
+    prefix = path.rstrip("/") + "/" if path else "uploads/"
+    key = f"{prefix}{file.filename}"
+    content_type = file.content_type or "application/octet-stream"
+
+    await storage.put(key, content, content_type)
+    return {"key": key, "filename": file.filename, "size_bytes": len(content)}
+
+
+@router.get("/{slug}/storage/download")
+async def storage_download(
+    slug: str,
+    key: str,
+    current_user=Depends(get_current_user),
+):
+    """Télécharge un fichier depuis le stockage de l'agent."""
+    from fastapi.responses import Response
+
+    storage = _get_scoped_storage(slug, current_user.id)
+    data = await storage.get(key)
+
+    if data is None:
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+
+    filename = key.split("/")[-1]
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{slug}/storage/list")
+async def storage_list(
+    slug: str,
+    prefix: Optional[str] = None,
+    current_user=Depends(get_current_user),
+):
+    """Liste les fichiers dans le stockage de l'agent."""
+    storage = _get_scoped_storage(slug, current_user.id)
+    keys = await storage.list(prefix or "")
+
+    files = []
+    for k in keys:
+        files.append({
+            "key": k,
+            "filename": k.split("/")[-1],
+            "size_bytes": 0,
+            "content_type": "application/octet-stream",
+        })
+    return files
+
+
+@router.delete("/{slug}/storage/delete")
+async def storage_delete(
+    slug: str,
+    body: dict,
+    current_user=Depends(get_current_user),
+):
+    """Supprime un fichier du stockage de l'agent."""
+    key = body.get("key", "")
+    if not key:
+        raise HTTPException(status_code=400, detail="Clé manquante")
+
+    storage = _get_scoped_storage(slug, current_user.id)
+    deleted = await storage.delete(key)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    return {"ok": True}
