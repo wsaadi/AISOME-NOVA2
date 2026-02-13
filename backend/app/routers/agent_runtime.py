@@ -520,9 +520,10 @@ async def list_sessions(
 
 def _get_scoped_storage(slug: str, user_id: int):
     """Create a ScopedAgentStorage for user × agent."""
-    from app.config import settings
+    from app.config import get_settings
     from app.framework.storage.agent_storage import AgentStorageManager
 
+    settings = get_settings()
     manager = AgentStorageManager(
         endpoint=settings.MINIO_ENDPOINT,
         access_key=settings.MINIO_ACCESS_KEY,
