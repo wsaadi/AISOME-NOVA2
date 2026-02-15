@@ -325,10 +325,23 @@ class ToolService:
     Service d'exécution des tools de la plateforme.
 
     Les tools sont des fonctions centralisées, auto-découvertes par le registre.
+    Lorsqu'un agent exécute un tool, le ToolService construit automatiquement
+    un ToolContext avec les services disponibles (storage, connectors, llm).
     """
 
-    def __init__(self, registry: Any):
+    def __init__(
+        self,
+        registry: Any,
+        user_id: int = 0,
+        storage: Optional["StorageService"] = None,
+        connectors: Optional["ConnectorService"] = None,
+        llm: Optional["LLMService"] = None,
+    ):
         self._registry = registry
+        self._user_id = user_id
+        self._storage = storage
+        self._connectors = connectors
+        self._llm = llm
 
     async def list(self) -> list[ToolMetadata]:
         """
@@ -343,17 +356,23 @@ class ToolService:
         """
         Exécute un tool par son slug.
 
+        Construit un ToolContext à partir des services de l'agent pour que
+        le tool ait accès au storage, connecteurs et LLM.
+
         Args:
             tool_slug: Identifiant unique du tool
             params: Paramètres d'entrée (validés contre le schema du tool)
 
         Returns:
             ToolResult avec success, data, error
-
-        Raises:
-            ValueError: Si le tool n'existe pas dans le registre
         """
-        return await self._registry.execute_tool(tool_slug, params)
+        ctx = ToolContext(
+            user_id=self._user_id,
+            storage=self._storage,
+            connectors=self._connectors,
+            llm=self._llm,
+        )
+        return await self._registry.execute_tool(tool_slug, params, context=ctx)
 
 
 class ConnectorService:
