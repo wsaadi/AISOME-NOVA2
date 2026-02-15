@@ -70,13 +70,13 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
     if (!currentAnalysis) return;
 
     const themeQuestions: Record<string, string> = {
-      'penalties': 'Quelles sont toutes les p\u00e9nalit\u00e9s et indemnit\u00e9s pr\u00e9vues dans ce contrat ?',
-      'termination': 'Quelles sont les conditions de r\u00e9siliation et leurs cons\u00e9quences ?',
-      'liability': 'Quelle est l\'etendue des responsabilit\u00e9s et limitations ?',
-      'ip': 'Qui d\u00e9tient la propri\u00e9t\u00e9 intellectuelle et sous quelles conditions ?',
-      'data': 'Quelles sont les clauses relatives aux donn\u00e9es et \u00e0 la confidentialit\u00e9 ?',
+      'penalties': 'Quelles sont toutes les pénalités et indemnités prévues dans ce contrat ?',
+      'termination': 'Quelles sont les conditions de résiliation et leurs conséquences ?',
+      'liability': "Quelle est l'étendue des responsabilités et limitations ?",
+      'ip': 'Qui détient la propriété intellectuelle et sous quelles conditions ?',
+      'data': 'Quelles sont les clauses relatives aux données et à la confidentialité ?',
       'sla': 'Quels sont les niveaux de service (SLA) garantis ?',
-      'pricing': 'Quel est le mod\u00e8le de prix et les conditions de r\u00e9vision ?',
+      'pricing': 'Quel est le modèle de prix et les conditions de révision ?',
       'warranty': 'Quelles sont les garanties offertes et leurs limites ?',
     };
 
@@ -107,7 +107,7 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
   // Risk level color coding
   const getRiskLevelColor = (level: string) => {
     const normalized = level.toLowerCase();
-    if (normalized.includes('\u00e9lev\u00e9') || normalized.includes('high')) return '#d32f2f';
+    if (normalized.includes('élevé') || normalized.includes('high')) return '#d32f2f';
     if (normalized.includes('moyen') || normalized.includes('medium')) return '#f57c00';
     return '#388e3c';
   };
@@ -119,7 +119,7 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
       <FileUpload
         onUpload={handleFileUpload}
         accept=".pdf,.docx,.doc"
-        label="D\u00e9posez votre contrat ici (PDF ou Word)"
+        label="Déposez votre contrat ici (PDF ou Word)"
         disabled={isLoading}
       />
       {progress > 0 && progress < 100 && (
@@ -167,8 +167,8 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
             <h3 style={styles.sectionTitle}>Tableau des risques</h3>
             <DataTable
               columns={[
-                { key: 'risk', label: 'Risque identifi\u00e9' },
-                { key: 'category', label: 'Cat\u00e9gorie' },
+                { key: 'risk', label: 'Risque identifié' },
+                { key: 'category', label: 'Catégorie' },
                 {
                   key: 'level',
                   label: 'Niveau',
@@ -182,7 +182,7 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
                 { key: 'recommendation', label: 'Recommandation' },
               ]}
               rows={riskTableData}
-              emptyMessage="Aucun risque identifi\u00e9"
+              emptyMessage="Aucun risque identifié"
             />
           </div>
         )}
@@ -193,21 +193,21 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
   // Render recommendations tab
   const renderRecommendationsTab = () => {
     const themes = [
-      { id: 'penalties', label: 'P\u00e9nalit\u00e9s et indemnit\u00e9s', icon: '\u26a0\ufe0f' },
-      { id: 'termination', label: 'R\u00e9siliation', icon: '\ud83d\udea3' },
-      { id: 'liability', label: 'Responsabilit\u00e9s', icon: '\u2696\ufe0f' },
-      { id: 'ip', label: 'Propri\u00e9t\u00e9 intellectuelle', icon: '\u00a9\ufe0f' },
-      { id: 'data', label: 'Donn\u00e9es et confidentialit\u00e9', icon: '\ud83d\udd12' },
-      { id: 'sla', label: 'Niveaux de service', icon: '\ud83d\udcca' },
-      { id: 'pricing', label: 'Prix et r\u00e9visions', icon: '\ud83d\udcb0' },
-      { id: 'warranty', label: 'Garanties', icon: '\ud83d\udee1\ufe0f' },
+      { id: 'penalties', label: 'Pénalités et indemnités', icon: '⚠️' },
+      { id: 'termination', label: 'Résiliation', icon: '🚪' },
+      { id: 'liability', label: 'Responsabilités', icon: '⚖️' },
+      { id: 'ip', label: 'Propriété intellectuelle', icon: '©️' },
+      { id: 'data', label: 'Données et confidentialité', icon: '🔒' },
+      { id: 'sla', label: 'Niveaux de service', icon: '📊' },
+      { id: 'pricing', label: 'Prix et révisions', icon: '💰' },
+      { id: 'warranty', label: 'Garanties', icon: '🛡️' },
     ];
 
     return (
       <div style={styles.recommendationsContainer}>
-        <h2 style={styles.sectionTitle}>Analyses th\u00e9matiques</h2>
+        <h2 style={styles.sectionTitle}>Analyses thématiques</h2>
         <p style={styles.helpText}>
-          Cliquez sur un th\u00e8me pour obtenir une analyse d\u00e9taill\u00e9e de cet aspect du contrat
+          Cliquez sur un thème pour obtenir une analyse détaillée de cet aspect du contrat
         </p>
 
         <div style={styles.themeGrid}>
@@ -231,7 +231,7 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
 
         {!currentAnalysis && (
           <div style={styles.noAnalysisMessage}>
-            <p>Veuillez d'abord analyser un contrat pour acc\u00e9der aux recommandations th\u00e9matiques</p>
+            <p>Veuillez d'abord analyser un contrat pour accéder aux recommandations thématiques</p>
           </div>
         )}
       </div>
@@ -272,7 +272,7 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
             }}
             onClick={() => setActiveTab('recommendations')}
           >
-            Th\u00e9matiques
+            Thématiques
           </button>
         </div>
 
@@ -281,7 +281,7 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
             settings={[
               {
                 key: 'analysisMode',
-                label: 'Mode d\'analyse',
+                label: "Mode d'analyse",
                 type: 'select',
                 options: [
                   { value: 'contract_only', label: 'Contrat seul' },
@@ -292,7 +292,7 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
             ]}
             values={settings}
             onChange={(v) => setSettings(v as typeof settings)}
-            title="Param\u00e8tres"
+            title="Paramètres"
           />
         </div>
       </div>
@@ -305,7 +305,7 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
             {!currentAnalysis && (
               <div style={styles.chatHeader}>
                 <p style={styles.helpText}>
-                  Analysez d'abord un contrat pour pouvoir poser des questions sp\u00e9cifiques
+                  Analysez d'abord un contrat pour pouvoir poser des questions spécifiques
                 </p>
               </div>
             )}
