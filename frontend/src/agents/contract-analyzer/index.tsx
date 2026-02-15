@@ -173,8 +173,8 @@ const ContractAnalyzerView: React.FC<AgentViewProps> = ({ agent, sessionId, user
                   key: 'level',
                   label: 'Niveau',
                   render: (value) => (
-                    <span style={{color: getRiskLevelColor(value as string), fontWeight: 'bold'}}>
-                      {value}
+                    <span style={{color: getRiskLevelColor(String(value)), fontWeight: 'bold'}}>
+                      {String(value)}
                     </span>
                   )
                 },
