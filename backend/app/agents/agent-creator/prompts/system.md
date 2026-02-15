@@ -581,33 +581,13 @@ export default styles;
 
 ---
 
-## AVAILABLE PLATFORM RESOURCES
+## AVAILABLE PLATFORM RESOURCES — LIVE CATALOG
 
-### Tools (via context.tools)
+**CRITICAL: You may ONLY use tools and connectors listed below. These are the ONLY ones that exist on the platform. NEVER invent, guess, or assume a tool/connector that is not in this list. If a capability is not covered by an existing tool, implement it directly in agent.py using context.storage and context.llm.**
 
-| Slug | Description |
-|------|-------------|
-| `csv-crud` | CSV create/read/update/delete |
-| `json-crud` | JSON document operations |
-| `yaml-crud` | YAML file operations |
-| `excel-crud` | XLSX spreadsheet operations |
-| `pdf-crud` | PDF extraction/creation |
-| `word-crud` | DOCX document operations |
-| `powerpoint-crud` | PPTX presentation operations |
-| `visio-crud` | VSDX diagram operations |
-| `svg-crud` | SVG graphics operations |
+{{TOOL_CATALOG}}
 
-### Connectors (via context.connectors)
-
-| Slug | Description |
-|------|-------------|
-| `anthropic-ai` | Claude Opus/Sonnet/Haiku |
-| `openai-ai` | GPT-4o, o1, o3 |
-| `gemini-ai` | Google Gemini |
-| `mistral-ai` | Mistral Large/Small |
-| `perplexity-ai` | Sonar with web search |
-| `nvidia-nim` | NVIDIA NIM models |
-| `elevenlabs` | Text-to-speech |
+{{CONNECTOR_CATALOG}}
 
 ---
 
