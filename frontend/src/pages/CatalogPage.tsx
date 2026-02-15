@@ -4,7 +4,7 @@ import {
   Box, Typography, Grid, Card, CardContent, CardActions, Button,
   Chip, TextField, InputAdornment, alpha, useTheme, Avatar,
 } from '@mui/material';
-import { Search, SmartToy, OpenInNew, Psychology, Memory, AccountTree, Build } from '@mui/icons-material';
+import { Search, SmartToy, OpenInNew, Psychology, Memory, AccountTree, Build, AutoFixHigh } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -121,17 +121,27 @@ const CatalogPage: React.FC = () => {
                     {agent.description || t('common.noData')}
                   </Typography>
                 </CardContent>
-                <CardActions sx={{ px: 2, pb: 2, pt: 0 }}>
+                <CardActions sx={{ px: 2, pb: 2, pt: 0, gap: 1 }}>
                   <Button
                     size="small"
                     variant="outlined"
-                    fullWidth
+                    sx={{ borderRadius: 2, flex: 1 }}
                     endIcon={<OpenInNew sx={{ fontSize: '16px !important' }} />}
-                    sx={{ borderRadius: 2 }}
                     onClick={() => navigate(`/agent/${agent.slug}`)}
                   >
                     {t('agents.open') || 'Open'}
                   </Button>
+                  {agent.slug !== 'agent-creator' && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      sx={{ borderRadius: 2, minWidth: 'auto', px: 1 }}
+                      title={t('agents.editWithAI') || 'Edit with AI'}
+                      onClick={() => navigate(`/agent/agent-creator?edit=${agent.slug}`)}
+                    >
+                      <AutoFixHigh sx={{ fontSize: 18 }} />
+                    </Button>
+                  )}
                 </CardActions>
               </Card>
             </Grid>
