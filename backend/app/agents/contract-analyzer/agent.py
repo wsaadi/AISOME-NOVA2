@@ -57,11 +57,19 @@ class ContractAnalyzerAgent(BaseAgent):
 
         context.set_progress(10, "Lecture du contrat...")
 
-        # Extract text from document
-        text_result = await context.tools.execute(
-            "file-text-reader",
-            {"file_key": file_key}
-        )
+        # Extract text from document using the appropriate CRUD tool
+        file_lower = file_name.lower()
+        if file_lower.endswith(".pdf"):
+            text_result = await context.tools.execute(
+                "pdf-crud",
+                {"action": "read", "storage_key": file_key}
+            )
+        else:
+            # .docx / .doc
+            text_result = await context.tools.execute(
+                "word-crud",
+                {"action": "read", "storage_key": file_key}
+            )
 
         if not text_result.success:
             return AgentResponse(
@@ -188,44 +196,41 @@ Fournis une analyse complete structuree avec :
     async def _generate_word_report(
         self, context: AgentContext, file_name: str, analysis: str, contract_excerpt: str
     ) -> dict:
-        """Generate Word document with analysis report."""
+        """Generate Word document with analysis report using word-crud."""
         try:
-            doc_content = {
-                "title": f"Analyse Juridique - {file_name}",
-                "sections": [
-                    {
-                        "title": "Informations du Document",
-                        "content": (
-                            f"Document analyse : {file_name}\n"
-                            f"Date d'analyse : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
-                            f"Extrait du contrat :\n{contract_excerpt}..."
-                        )
-                    },
-                    {
-                        "title": "Analyse Complete",
-                        "content": analysis
-                    }
-                ],
-                "format": {
-                    "font": "Calibri",
-                    "title_size": 16,
-                    "heading_size": 14,
-                    "body_size": 11,
-                    "margins": {"top": 2.5, "bottom": 2.5, "left": 2.5, "right": 2.5}
-                }
-            }
+            output_key = f"reports/analyse_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+
+            # Build structured content for word-crud create action
+            paragraphs = [
+                {"text": "Informations du Document", "style": "Heading 1"},
+                {"text": f"Document analysé : {file_name}", "style": "Normal"},
+                {"text": f"Date d'analyse : {datetime.now().strftime('%d/%m/%Y %H:%M')}", "style": "Normal"},
+                {"text": f"Extrait du contrat : {contract_excerpt}...", "style": "Normal"},
+                {"text": "Analyse Complète", "style": "Heading 1"},
+            ]
+            # Split analysis into paragraphs
+            for line in analysis.split("\n"):
+                if line.strip():
+                    paragraphs.append({"text": line.strip(), "style": "Normal"})
 
             result = await context.tools.execute(
-                "document-generator",
+                "word-crud",
                 {
-                    "format": "docx",
-                    "content": doc_content,
-                    "output_key": f"reports/analyse_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                    "action": "create",
+                    "storage_key": output_key,
+                    "data": {
+                        "title": f"Analyse Juridique - {file_name}",
+                        "paragraphs": paragraphs,
+                    },
+                    "options": {
+                        "font_name": "Calibri",
+                        "font_size": 11,
+                    },
                 }
             )
 
             if result.success:
-                return {"success": True, "key": result.data.get("file_key")}
+                return {"success": True, "key": output_key}
             else:
                 return {"success": False, "error": result.error}
 

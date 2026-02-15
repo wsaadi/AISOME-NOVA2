@@ -2,13 +2,13 @@
   "name": "Analyseur de Contrats Juridiques",
   "slug": "contract-analyzer",
   "version": "1.0.0",
-  "description": "Agent sp\u00e9cialis\u00e9 dans l'analyse de contrats juridiques pour identifier risques, enjeux et recommandations avec export Word",
+  "description": "Agent spécialisé dans l'analyse de contrats juridiques pour identifier risques, enjeux et recommandations avec export Word",
   "author": "",
   "icon": "gavel",
   "category": "analysis",
   "tags": ["juridique", "contrat", "analyse", "risques", "word", "pdf"],
   "dependencies": {
-    "tools": ["file-text-reader", "document-generator"],
+    "tools": ["pdf-crud", "word-crud"],
     "connectors": []
   },
   "triggers": [

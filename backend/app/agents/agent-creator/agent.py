@@ -146,8 +146,16 @@ class AgentCreatorAgent(BaseAgent):
             f"msg={message.content[:80]!r}"
         )
 
-        # Load the appropriate system prompt
-        system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
+        # Load live catalogs from registries
+        tool_catalog = await self._build_tool_catalog(context)
+        connector_catalog = await self._build_connector_catalog(context)
+
+        # Load the appropriate system prompt (with injected catalogs)
+        system_prompt = self._load_system_prompt(
+            generation_phase=in_generation_phase,
+            tool_catalog=tool_catalog,
+            connector_catalog=connector_catalog,
+        )
 
         # Build conversation from history (current message already included)
         conversation = self._build_conversation(
@@ -179,7 +187,14 @@ class AgentCreatorAgent(BaseAgent):
             context.set_progress(80, t("agent_creator.progress.validating", lang))
 
             files = self._build_agent_json(files)
-            validation = self._validate(files, lang)
+
+            # Build set of known tool slugs for validation
+            try:
+                live_tools = await context.tools.list()
+                known_tool_slugs = {t.slug for t in live_tools}
+            except Exception:
+                known_tool_slugs = None
+            validation = self._validate(files, lang, known_tool_slugs=known_tool_slugs)
 
             slug = self._get_slug(files)
             stored_files: dict[str, str] = {}
@@ -239,7 +254,13 @@ class AgentCreatorAgent(BaseAgent):
             f"msg={message.content[:80]!r}"
         )
 
-        system_prompt = self._load_system_prompt(generation_phase=in_generation_phase)
+        tool_catalog = await self._build_tool_catalog(context)
+        connector_catalog = await self._build_connector_catalog(context)
+        system_prompt = self._load_system_prompt(
+            generation_phase=in_generation_phase,
+            tool_catalog=tool_catalog,
+            connector_catalog=connector_catalog,
+        )
         conversation = self._build_conversation(history, in_generation_phase)
 
         accumulated = ""
@@ -260,7 +281,13 @@ class AgentCreatorAgent(BaseAgent):
         if files:
             files = self._build_agent_json(files)
             slug = self._get_slug(files)
-            validation = self._validate(files, context.lang)
+
+            try:
+                live_tools = await context.tools.list()
+                known_tool_slugs = {t.slug for t in live_tools}
+            except Exception:
+                known_tool_slugs = None
+            validation = self._validate(files, context.lang, known_tool_slugs=known_tool_slugs)
 
             if context.storage:
                 for filepath, content in files.items():
@@ -343,10 +370,85 @@ class AgentCreatorAgent(BaseAgent):
         return False
 
     # ------------------------------------------------------------------
+    # Live catalog injection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _build_tool_catalog(context: AgentContext) -> str:
+        """
+        Build a detailed tool catalog from the live registry.
+
+        Includes slug, description, input/output schemas, and examples
+        so the LLM knows exactly what each tool can do and never invents
+        non-existent tools.
+        """
+        try:
+            tools = await context.tools.list()
+        except Exception:
+            return "_Could not load tool catalog._"
+
+        if not tools:
+            return "_No tools registered._"
+
+        lines = ["### Tools (via context.tools)\n"]
+        for tool in sorted(tools, key=lambda t: t.slug):
+            lines.append(f"#### `{tool.slug}` — {tool.name}")
+            lines.append(f"_{tool.description}_\n")
+
+            if tool.input_schema:
+                lines.append("**Input parameters:**")
+                for p in tool.input_schema:
+                    req = " (REQUIRED)" if p.required else ""
+                    desc = f" — {p.description}" if p.description else ""
+                    lines.append(f"- `{p.name}` ({p.type}{req}){desc}")
+                lines.append("")
+
+            if tool.output_schema:
+                lines.append("**Output fields:**")
+                for p in tool.output_schema:
+                    desc = f" — {p.description}" if p.description else ""
+                    lines.append(f"- `{p.name}` ({p.type}){desc}")
+                lines.append("")
+
+            if tool.examples:
+                lines.append("**Example:**")
+                ex = tool.examples[0]
+                lines.append(f"```python\nresult = await context.tools.execute(\"{tool.slug}\", {json.dumps(ex.input, ensure_ascii=False)})\n# result.data => {json.dumps(ex.output, ensure_ascii=False)}\n```")
+                lines.append("")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    async def _build_connector_catalog(context: AgentContext) -> str:
+        """Build a connector catalog from the live registry."""
+        try:
+            connectors = await context.connectors.list()
+        except Exception:
+            return "_Could not load connector catalog._"
+
+        if not connectors:
+            return "_No connectors registered._"
+
+        lines = ["### Connectors (via context.connectors)\n"]
+        lines.append("| Slug | Description |")
+        lines.append("|------|-------------|")
+        for conn in connectors:
+            slug = conn.get("slug", conn.slug if hasattr(conn, "slug") else "?")
+            desc = conn.get("description", conn.description if hasattr(conn, "description") else "")
+            lines.append(f"| `{slug}` | {desc} |")
+
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
     # System prompt management
     # ------------------------------------------------------------------
 
-    def _load_system_prompt(self, generation_phase: bool = False) -> str:
+    def _load_system_prompt(
+        self,
+        generation_phase: bool = False,
+        tool_catalog: str = "",
+        connector_catalog: str = "",
+    ) -> str:
         """
         Load the system prompt, optionally truncated for question phase.
 
@@ -357,9 +459,14 @@ class AgentCreatorAgent(BaseAgent):
 
         In generation phase:
           - The full prompt is returned including all framework reference
+          - Tool and connector catalogs are injected dynamically from the live registries
         """
         path = Path(__file__).parent / "prompts" / "system.md"
         full_prompt = path.read_text(encoding="utf-8")
+
+        # Inject live catalogs (replace placeholders)
+        full_prompt = full_prompt.replace("{{TOOL_CATALOG}}", tool_catalog or "_No tools available._")
+        full_prompt = full_prompt.replace("{{CONNECTOR_CATALOG}}", connector_catalog or "_No connectors available._")
 
         if generation_phase:
             return full_prompt
@@ -493,12 +600,17 @@ class AgentCreatorAgent(BaseAgent):
     # Validation
     # ------------------------------------------------------------------
 
-    def _validate(self, files: dict[str, str], lang: str = "en") -> dict:
+    def _validate(
+        self,
+        files: dict[str, str],
+        lang: str = "en",
+        known_tool_slugs: set[str] | None = None,
+    ) -> dict:
         """
         Validate all generated files for framework compliance.
 
         Checks security rules, required structure, naming conventions,
-        and framework contract adherence.
+        framework contract adherence, and tool/connector existence.
         """
         errors: list[str] = []
         warnings: list[str] = []
@@ -508,11 +620,39 @@ class AgentCreatorAgent(BaseAgent):
         self._validate_system_md(files, errors, warnings, lang)
         self._validate_frontend(files, errors, lang)
 
+        # Validate that declared tools actually exist in the registry
+        if known_tool_slugs is not None:
+            self._validate_tool_dependencies(files, errors, known_tool_slugs, lang)
+
         return {
             "valid": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
         }
+
+    @staticmethod
+    def _validate_tool_dependencies(
+        files: dict[str, str],
+        errors: list[str],
+        known_tool_slugs: set[str],
+        lang: str,
+    ) -> None:
+        """Validate that all declared tool dependencies exist in the live registry."""
+        raw = files.get("backend/manifest.json", "")
+        if not raw:
+            return
+        try:
+            manifest = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+
+        declared_tools = manifest.get("dependencies", {}).get("tools", [])
+        for tool_slug in declared_tools:
+            if tool_slug not in known_tool_slugs:
+                errors.append(
+                    f"Tool '{tool_slug}' does not exist in the platform registry. "
+                    f"Available tools: {', '.join(sorted(known_tool_slugs))}"
+                )
 
     def _validate_manifest(
         self, files: dict[str, str], errors: list[str], lang: str
