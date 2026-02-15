@@ -445,6 +445,18 @@ async def chat_sync(
             from app.services.consumption import ConsumptionService
             consumption_service = ConsumptionService(db)
 
+            # Create storage manager so tools have access to MinIO
+            from app.config import get_settings
+            from app.framework.storage.agent_storage import AgentStorageManager
+            settings = get_settings()
+            storage_manager = AgentStorageManager(
+                endpoint=settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                bucket=settings.MINIO_STORAGE_BUCKET,
+                secure=settings.MINIO_SECURE,
+            )
+
             engine = AgentEngine(
                 db_session=db,
                 tool_registry=tool_registry,
@@ -452,6 +464,7 @@ async def chat_sync(
                 session_manager=session_manager,
                 consumption_service=consumption_service,
                 vault_service=vault_service,
+                storage_service=storage_manager,
             )
             engine.discover_agents()
 
