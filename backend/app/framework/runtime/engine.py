@@ -201,7 +201,6 @@ class AgentEngine:
             base_url=llm_config["base_url"],
         )
 
-        tool_service = ToolService(self._tool_registry)
         connector_service = ConnectorService(self._connector_registry)
         agent_service = AgentService(self)
         memory_service = MemoryService(session_id, self._session_manager)
@@ -212,6 +211,16 @@ class AgentEngine:
             storage_service = StorageService(
                 self._storage.scoped(user_id=user_id, agent_slug=agent_slug)
             )
+
+        # ToolService reçoit les services pour construire un ToolContext
+        # complet quand un agent exécute un tool
+        tool_service = ToolService(
+            registry=self._tool_registry,
+            user_id=user_id,
+            storage=storage_service,
+            connectors=connector_service,
+            llm=llm_service,
+        )
 
         return AgentContext(
             session_id=session_id,
