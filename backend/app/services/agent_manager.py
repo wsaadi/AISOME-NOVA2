@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 # Filesystem roots for deploying framework agents
 _BACKEND_AGENTS_ROOT = Path(__file__).parent.parent / "agents"
 _FRONTEND_AGENTS_ROOT = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "agents"
-_FRONTEND_REGISTRY_PATH = _FRONTEND_AGENTS_ROOT / "registry.ts"
 
 
 class AgentManager:
@@ -217,35 +216,9 @@ class AgentManager:
                 has_frontend = True
                 logger.info(f"Deployed {zip_path} → {fs_path}")
 
-        # ── Update frontend registry ──
-        if has_frontend:
-            self._update_frontend_registry(slug)
-
-    def _update_frontend_registry(self, slug: str) -> None:
-        """
-        Add the agent to the frontend registry so its custom view is loaded.
-        Reads registry.ts, adds the lazy import if not already present, writes back.
-        """
-        if not _FRONTEND_REGISTRY_PATH.exists():
-            logger.warning(f"Frontend registry not found: {_FRONTEND_REGISTRY_PATH}")
-            return
-
-        content = _FRONTEND_REGISTRY_PATH.read_text(encoding="utf-8")
-
-        # Already registered?
-        if f"'{slug}'" in content:
-            logger.info(f"Agent '{slug}' already in frontend registry")
-            return
-
-        # Insert new entry before the closing '};'
-        new_entry = f"  '{slug}': lazy(() => import('./{slug}')),"
-        content = content.replace(
-            "};",
-            f"{new_entry}\n}};",
-        )
-
-        _FRONTEND_REGISTRY_PATH.write_text(content, encoding="utf-8")
-        logger.info(f"Frontend registry updated: added '{slug}'")
+        # NOTE: Frontend registry uses require.context auto-discovery.
+        # No manual registry update needed — just deploying the files is enough.
+        # The frontend will pick up new agent views at next build.
 
     async def duplicate_agent(
         self, db: AsyncSession, agent_id: UUID, new_name: str, new_slug: str,
