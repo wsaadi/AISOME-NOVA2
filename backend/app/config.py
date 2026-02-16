@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
+    # N8N
+    N8N_BASE_URL: str = "http://localhost:5678"
+    N8N_BASIC_AUTH_USER: str = "nova2"
+    N8N_BASIC_AUTH_PASSWORD: str = "nova2secret"
+
     # Admin
     ADMIN_EMAIL: str = "admin@nova2.local"
     ADMIN_PASSWORD: str = "Admin123!"

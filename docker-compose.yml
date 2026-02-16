@@ -98,6 +98,9 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@nova2.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
       APP_VERSION: ${APP_VERSION:-1.0.0}
+      N8N_BASE_URL: ${N8N_BASE_URL:-http://n8n:5678}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-nova2}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-nova2secret}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -149,12 +152,51 @@ services:
       - nova2-network
     restart: unless-stopped
 
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: nova2-n8n
+    environment:
+      N8N_HOST: 0.0.0.0
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-nova2}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-nova2secret}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: nova2
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-nova2}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-nova2secret}
+      DB_POSTGRESDB_SCHEMA: n8n
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: 168
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nova2-network
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
         REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
+        REACT_APP_N8N_URL: ${REACT_APP_N8N_URL:-http://localhost:5678}
     container_name: nova2-frontend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
@@ -169,6 +211,7 @@ volumes:
   minio_data:
   vault_data:
   redis_data:
+  n8n_data:
 
 networks:
   nova2-network:
