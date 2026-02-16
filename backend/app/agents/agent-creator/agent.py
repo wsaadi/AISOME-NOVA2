@@ -553,6 +553,17 @@ class AgentCreatorAgent(BaseAgent):
 
         if generation_phase:
             prompt = full_prompt
+            # Append an explicit phase status so the LLM knows it must
+            # generate files NOW (mirrors the QUESTION PHASE status block).
+            prompt += (
+                "\n\n---\n\n"
+                "## CURRENT STATUS: GENERATION PHASE (Phase 3)\n\n"
+                "The user has confirmed the requirements. You are NOW in **Phase 3 — Generate**.\n\n"
+                "**Your ONLY task**: generate ALL 5 files immediately using "
+                "`<<<FILE:path>>>` … `<<<END_FILE>>>` markers.\n\n"
+                "**Do NOT** ask more questions, show another summary, or request confirmation.\n"
+                "Start with a brief intro of what you built, then output all 5 files."
+            )
             # In edit mode generation phase, append current source files
             if edit_mode and edit_source_files:
                 prompt += self._build_edit_mode_prompt(edit_source_files)
@@ -660,7 +671,7 @@ class AgentCreatorAgent(BaseAgent):
             content = getattr(msg, "content", str(msg))
             parts.append(f"[{role_str}]: {content}")
 
-        # In question phase, inject a reminder after the conversation
+        # Inject a phase-appropriate reminder after the conversation
         if not generation_phase:
             if edit_slug:
                 parts.append(
@@ -675,6 +686,24 @@ class AgentCreatorAgent(BaseAgent):
                     "Ask ONE clarifying question about the user's needs. "
                     "Do NOT generate code, files, or technical output. "
                     "Do NOT use <<<FILE: markers."
+                )
+        else:
+            # GENERATION PHASE: inject an explicit trigger so the LLM
+            # knows it must produce files NOW instead of showing yet
+            # another summary or asking for confirmation again.
+            if edit_slug:
+                parts.append(
+                    f"[system]: GENERATION PHASE ACTIVATED — The user has confirmed the changes for agent '{edit_slug}'. "
+                    "You MUST now generate ALL 5 complete files using <<<FILE:path>>> ... <<<END_FILE>>> markers. "
+                    "Do NOT ask any more questions. Do NOT show another summary or ask for confirmation. "
+                    "Output a brief intro of what you built, then ALL 5 files immediately."
+                )
+            else:
+                parts.append(
+                    "[system]: GENERATION PHASE ACTIVATED — The user has confirmed the requirements. "
+                    "You MUST now generate ALL 5 complete files using <<<FILE:path>>> ... <<<END_FILE>>> markers. "
+                    "Do NOT ask any more questions. Do NOT show another summary or ask for confirmation. "
+                    "Output a brief intro of what you built, then ALL 5 files immediately."
                 )
 
         return "\n\n".join(parts)
