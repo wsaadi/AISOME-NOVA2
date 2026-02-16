@@ -33,8 +33,7 @@ class Settings(BaseSettings):
 
     # N8N
     N8N_BASE_URL: str = "http://localhost:5678"
-    N8N_BASIC_AUTH_USER: str = "nova2"
-    N8N_BASIC_AUTH_PASSWORD: str = "nova2secret"
+    N8N_API_KEY: str = ""
 
     # Admin
     ADMIN_EMAIL: str = "admin@nova2.local"

@@ -482,16 +482,128 @@ def _determine_ui_mode(analysis: WorkflowAnalysis) -> str:
 
 
 # ---------------------------------------------------------------------------
-# N8N API client helper
+# N8N API client helper — auto-setup + API key auth
 # ---------------------------------------------------------------------------
+
+# Cached API key (populated by auto-setup or from settings)
+_n8n_api_key: str = ""
+
+# Default credentials for auto-created N8N owner
+_N8N_OWNER_EMAIL = "nova2@platform.local"
+_N8N_OWNER_PASSWORD = "Nova2Admin!2024"
+_N8N_OWNER_FIRST = "NOVA2"
+_N8N_OWNER_LAST = "Platform"
+
+
+async def _ensure_n8n_api_key() -> str:
+    """
+    Ensure we have a valid N8N API key.
+
+    Strategy:
+    1. Use the key from settings if available (N8N_API_KEY env var)
+    2. Use cached key from a previous auto-setup
+    3. Auto-setup: create owner → login → generate API key
+    """
+    global _n8n_api_key
+
+    # 1. From settings
+    if settings.N8N_API_KEY:
+        return settings.N8N_API_KEY
+
+    # 2. Already cached
+    if _n8n_api_key:
+        return _n8n_api_key
+
+    # 3. Auto-setup
+    base_url = settings.N8N_BASE_URL.rstrip("/")
+    logger.info("N8N API key not configured — attempting auto-setup...")
+
+    async with httpx.AsyncClient(
+        base_url=base_url,
+        timeout=httpx.Timeout(30.0, connect=10.0),
+    ) as client:
+        # Step A: Try to create the owner (only works on first run)
+        try:
+            setup_resp = await client.post(
+                "/api/v1/owner/setup",
+                json={
+                    "email": _N8N_OWNER_EMAIL,
+                    "password": _N8N_OWNER_PASSWORD,
+                    "firstName": _N8N_OWNER_FIRST,
+                    "lastName": _N8N_OWNER_LAST,
+                },
+            )
+            if setup_resp.status_code in (200, 201):
+                logger.info("N8N owner created via auto-setup")
+            else:
+                logger.debug(f"N8N owner setup returned {setup_resp.status_code} (already exists?)")
+        except Exception as e:
+            logger.debug(f"N8N owner setup skipped: {e}")
+
+        # Step B: Login to get session cookie
+        login_resp = await client.post(
+            "/api/v1/login",
+            json={
+                "email": _N8N_OWNER_EMAIL,
+                "password": _N8N_OWNER_PASSWORD,
+            },
+        )
+        if login_resp.status_code != 200:
+            logger.error(f"N8N login failed: {login_resp.status_code} - {login_resp.text}")
+            raise RuntimeError(
+                "Cannot authenticate with N8N. Please set N8N_API_KEY in your environment "
+                "or create the owner account in N8N manually."
+            )
+
+        # Step C: Create an API key using the session cookie
+        cookies = login_resp.cookies
+        api_key_resp = await client.post("/api/v1/me/api-keys", cookies=cookies)
+
+        if api_key_resp.status_code in (200, 201):
+            data = api_key_resp.json()
+            # Response can be {"data": {"apiKey": "..."}} or {"apiKey": "..."}
+            key = (
+                data.get("data", {}).get("apiKey")
+                or data.get("apiKey")
+                or data.get("data", {}).get("rawApiKey")
+                or data.get("rawApiKey")
+                or ""
+            )
+            if key:
+                _n8n_api_key = key
+                logger.info("N8N API key auto-generated successfully")
+                return _n8n_api_key
+
+        # Step D: If creation failed, try listing existing keys
+        list_resp = await client.get("/api/v1/me/api-keys", cookies=cookies)
+        if list_resp.status_code == 200:
+            keys_data = list_resp.json()
+            keys = keys_data.get("data", keys_data) if isinstance(keys_data, dict) else keys_data
+            if isinstance(keys, list) and keys:
+                # Use the first existing key's raw value if available,
+                # otherwise we need to create a new one
+                existing_key = keys[0].get("apiKey") or keys[0].get("rawApiKey") or ""
+                if existing_key:
+                    _n8n_api_key = existing_key
+                    logger.info("Using existing N8N API key")
+                    return _n8n_api_key
+
+        raise RuntimeError(
+            "Failed to auto-generate N8N API key. "
+            "Please create one manually in N8N Settings > API and set N8N_API_KEY."
+        )
+
 
 async def get_n8n_client() -> httpx.AsyncClient:
     """Create an authenticated httpx client for N8N API."""
+    api_key = await _ensure_n8n_api_key()
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if api_key:
+        headers["X-N8N-API-KEY"] = api_key
     return httpx.AsyncClient(
         base_url=settings.N8N_BASE_URL.rstrip("/"),
-        auth=(settings.N8N_BASIC_AUTH_USER, settings.N8N_BASIC_AUTH_PASSWORD),
         timeout=httpx.Timeout(30.0, connect=10.0),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
     )
 
 
