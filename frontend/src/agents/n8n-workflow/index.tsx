@@ -69,7 +69,8 @@ interface WorkflowConfig {
 
 const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   const { t } = useTranslation();
-  const config = agent.config as unknown as WorkflowConfig;
+  // n8n_workflow agents carry a `config` field injected by AgentRuntimePage
+  const config = (agent as any).config as WorkflowConfig | undefined;
   const analysis = config?.workflow_analysis;
   const uiMode = analysis?.ui_mode || config?.ui_mode || 'simple';
 
