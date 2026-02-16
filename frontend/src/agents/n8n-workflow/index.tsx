@@ -323,9 +323,8 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
           <div style={styles.chatContainer}>
             <ChatPanel
               messages={messages}
-              onSendMessage={(content) => {
-                // Send to workflow via agent runtime
-                sendMessage(content);
+              onSendMessage={async (content) => {
+                await sendMessage(content);
               }}
               isLoading={isLoading}
               streamingContent={streamingContent}
