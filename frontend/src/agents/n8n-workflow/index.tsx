@@ -97,7 +97,8 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   }, []);
 
   const handleFormSubmit = useCallback(async () => {
-    if (!config?.n8n_workflow_id) return;
+    const workflowId = config?.n8n_workflow_id;
+    if (!workflowId) return;
     setExecuting(true);
     setExecutionResult(null);
     setExecutionError(null);
@@ -107,7 +108,7 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
       const API_BASE = process.env.REACT_APP_API_URL || '';
 
       const response = await fetch(
-        `${API_BASE}/api/n8n/workflows/${config.n8n_workflow_id}/execute`,
+        `${API_BASE}/api/n8n/workflows/${workflowId}/execute`,
         {
           method: 'POST',
           headers: {
@@ -139,6 +140,8 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 
   // --- Simple mode handler ---
   const handleSimpleExecute = useCallback(async () => {
+    const workflowId = config?.n8n_workflow_id;
+    if (!workflowId) return;
     setExecuting(true);
     setExecutionResult(null);
     setExecutionError(null);
@@ -148,7 +151,7 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
       const API_BASE = process.env.REACT_APP_API_URL || '';
 
       const response = await fetch(
-        `${API_BASE}/api/n8n/workflows/${config.n8n_workflow_id}/execute`,
+        `${API_BASE}/api/n8n/workflows/${workflowId}/execute`,
         {
           method: 'POST',
           headers: {
