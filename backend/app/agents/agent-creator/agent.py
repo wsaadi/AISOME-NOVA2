@@ -157,14 +157,17 @@ class AgentCreatorAgent(BaseAgent):
         context.set_progress(20, t("agent_creator.progress.loading_history", lang))
         history = await context.memory.get_history(limit=50) if context.memory else []
         user_msg_count = self._count_user_messages(history)
+        last_assistant_msg = self._get_last_assistant_message(history)
 
         in_generation_phase = self._should_enter_generation(
             user_msg_count, message.content, edit_mode=bool(edit_slug),
+            last_assistant_message=last_assistant_msg,
         )
         logger.info(
             f"[agent-creator] handle_message: history={len(history)} msgs, "
             f"user_count={user_msg_count}, phase={'GENERATION' if in_generation_phase else 'QUESTION'}, "
-            f"edit_mode={bool(edit_slug)}, msg={message.content[:80]!r}"
+            f"edit_mode={bool(edit_slug)}, summary_shown={self._assistant_showed_summary(last_assistant_msg)}, "
+            f"msg={message.content[:80]!r}"
         )
 
         # Load live catalogs from registries
@@ -273,14 +276,17 @@ class AgentCreatorAgent(BaseAgent):
 
         history = await context.memory.get_history(limit=50) if context.memory else []
         user_msg_count = self._count_user_messages(history)
+        last_assistant_msg = self._get_last_assistant_message(history)
 
         in_generation_phase = self._should_enter_generation(
             user_msg_count, message.content, edit_mode=bool(edit_slug),
+            last_assistant_message=last_assistant_msg,
         )
         logger.info(
             f"[agent-creator] handle_message_stream: history={len(history)} msgs, "
             f"user_count={user_msg_count}, phase={'GENERATION' if in_generation_phase else 'QUESTION'}, "
-            f"edit_mode={bool(edit_slug)}, msg={message.content[:80]!r}"
+            f"edit_mode={bool(edit_slug)}, summary_shown={self._assistant_showed_summary(last_assistant_msg)}, "
+            f"msg={message.content[:80]!r}"
         )
 
         tool_catalog = await self._build_tool_catalog(context)
@@ -365,9 +371,42 @@ class AgentCreatorAgent(BaseAgent):
                 count += 1
         return count
 
+    @staticmethod
+    def _get_last_assistant_message(history: list) -> str:
+        """Return the content of the most recent assistant message in history."""
+        for msg in reversed(history):
+            role = getattr(msg, "role", None)
+            role_str = role.value if hasattr(role, "value") else str(role)
+            if role_str == "assistant":
+                return getattr(msg, "content", "")
+        return ""
+
+    @staticmethod
+    def _assistant_showed_summary(last_assistant_message: str) -> bool:
+        """
+        Check whether the assistant's last message was a requirements summary
+        asking for user confirmation (Phase 2 → Phase 3 transition).
+
+        Detected by the presence of the summary emoji or typical confirmation
+        questions in any language.
+        """
+        if not last_assistant_message:
+            return False
+        text = last_assistant_message.lower()
+        return (
+            "\U0001f4cb" in last_assistant_message  # 📋 emoji
+            or "générer l'agent" in text
+            or "generer l'agent" in text
+            or "generate the agent" in text
+            or "should i generate" in text
+            or "puis-je générer" in text
+            or "puis-je generer" in text
+        )
+
     def _should_enter_generation(
         self, user_msg_count: int, current_message: str,
         edit_mode: bool = False,
+        last_assistant_message: str = "",
     ) -> bool:
         """
         Determine whether the conversation should enter generation phase.
@@ -377,9 +416,14 @@ class AgentCreatorAgent(BaseAgent):
         - Generation REQUIRES both:
           a) at least _MIN_MESSAGES_FOR_GENERATION user messages, AND
           b) an explicit confirmation keyword in the latest message
+        - Keyword matching is **context-aware**:
+          • If the assistant already showed a summary (📋), loose matching
+            is used (keyword substring in short messages).
+          • If no summary was shown yet, only an **exact match** (after
+            stripping punctuation) is accepted.  This prevents normal
+            answers like "ok je veux un chat" from triggering generation.
         - In edit mode: threshold is lower (_MIN_MESSAGES_FOR_GENERATION_EDIT)
           and any non-trivial message triggers generation immediately
-          (the user describes the change they want — no need for Q&A)
 
         Even if the LLM ignores the question-phase prompt, the hard block
         in handle_message will prevent file extraction.
@@ -396,12 +440,27 @@ class AgentCreatorAgent(BaseAgent):
 
         # Require explicit confirmation keyword.
         lower = current_message.lower().strip()
-        is_short = len(lower) <= 30
-        for keyword in _CONFIRMATION_KEYWORDS:
-            if is_short and keyword in lower:
-                return True
-            if lower == keyword:
-                return True
+
+        # Check if the assistant already presented a summary and asked
+        # for confirmation.  Only then do we accept loose keyword matching.
+        summary_shown = self._assistant_showed_summary(last_assistant_message)
+
+        if summary_shown:
+            # Loose matching: keyword anywhere in a short message
+            is_short = len(lower) <= 30
+            for keyword in _CONFIRMATION_KEYWORDS:
+                if is_short and keyword in lower:
+                    return True
+                if lower == keyword:
+                    return True
+        else:
+            # Strict matching: the message must be essentially just a
+            # confirmation keyword (strip surrounding punctuation/whitespace).
+            # This prevents "ok je veux un dashboard" from triggering.
+            cleaned = re.sub(r"[^\w\s'àâäéèêëïîôùûüÿçœæ-]+", "", lower).strip()
+            for keyword in _CONFIRMATION_KEYWORDS:
+                if cleaned == keyword:
+                    return True
 
         return False
 
