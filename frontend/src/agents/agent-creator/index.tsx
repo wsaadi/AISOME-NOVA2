@@ -11,7 +11,8 @@
  *    - Download ZIP button
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AgentViewProps, ChatMessage } from 'framework/types';
 import { ChatPanel, ActionButton, MarkdownView } from 'framework/components';
@@ -138,6 +139,9 @@ const langForFile = (path: string): string => {
 
 const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  const editSlug = searchParams.get('edit');
+
   const {
     sendMessage,
     messages,
@@ -147,6 +151,31 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
     progressMessage,
     error,
   } = useAgent(agent.slug, sessionId);
+
+  // Edit mode: send initial context on first render
+  const editInitSent = useRef(false);
+  useEffect(() => {
+    if (!editSlug || editInitSent.current || messages.length > 0) return;
+    editInitSent.current = true;
+    // Send initial edit request with metadata
+    sendMessage(
+      t('agentCreator.editInitMessage', 'I want to modify the agent "{{slug}}". What changes would you like me to make?').replace('{{slug}}', editSlug),
+      { edit_mode: true, edit_agent_slug: editSlug },
+    );
+  }, [editSlug, messages.length, sendMessage, t]);
+
+  // Wrap sendMessage to always include edit metadata when in edit mode
+  const sendMessageWrapped = useCallback(
+    (content: string, metadata?: Record<string, unknown>) => {
+      const meta = { ...metadata };
+      if (editSlug) {
+        meta.edit_mode = true;
+        meta.edit_agent_slug = editSlug;
+      }
+      return sendMessage(content, meta);
+    },
+    [sendMessage, editSlug],
+  );
 
   // Track which files are expanded in the preview
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
@@ -204,7 +233,9 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 
       const token = localStorage.getItem('access_token');
       const API_BASE = process.env.REACT_APP_API_URL || '';
-      const response = await fetch(`${API_BASE}/api/agents/import`, {
+      // In edit mode, pass overwrite param to update existing agent
+      const overwriteParam = editSlug ? `?overwrite=${encodeURIComponent(editSlug)}` : '';
+      const response = await fetch(`${API_BASE}/api/agents/import${overwriteParam}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -218,13 +249,15 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
       const data = await response.json();
       setDeployStatus('success');
       setDeployMessage(
-        t('agentCreator.deploySuccess', 'Agent "{{name}}" deployed! Open it from the catalog.').replace('{{name}}', data.name)
+        editSlug
+          ? t('agentCreator.updateSuccess', 'Agent "{{name}}" updated successfully!').replace('{{name}}', data.name)
+          : t('agentCreator.deploySuccess', 'Agent "{{name}}" deployed! Open it from the catalog.').replace('{{name}}', data.name)
       );
     } catch (err) {
       setDeployStatus('error');
       setDeployMessage(err instanceof Error ? err.message : 'Deploy failed');
     }
-  }, [generated, t]);
+  }, [generated, editSlug, t]);
 
   // Sort files for display: agent.json last, others alphabetically
   const sortedFiles = useMemo(() => {
@@ -241,8 +274,13 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
-          <span style={styles.headerIcon}>&#x2728;</span>
-          <h3 style={styles.headerTitle}>{t('agentCreator.title', 'Agent Creator')}</h3>
+          <span style={styles.headerIcon}>{editSlug ? '\u270F\uFE0F' : '\u2728'}</span>
+          <h3 style={styles.headerTitle}>
+            {editSlug
+              ? t('agentCreator.editTitle', 'Edit Agent')
+              : t('agentCreator.title', 'Agent Creator')}
+          </h3>
+          {editSlug && <span style={styles.editBadge}>{editSlug}</span>}
           {generated && <span style={styles.slugBadge}>{generated.slug}</span>}
         </div>
       </div>
@@ -327,7 +365,9 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
               label={
                 deployStatus === 'deploying'
                   ? t('agentCreator.deploying', 'Deploying...')
-                  : t('agentCreator.deploy', 'Deploy to platform')
+                  : editSlug
+                    ? t('agentCreator.update', 'Update agent')
+                    : t('agentCreator.deploy', 'Deploy to platform')
               }
               onClick={handleDeploy}
               loading={deployStatus === 'deploying'}
@@ -353,10 +393,14 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
       <div style={styles.chatArea}>
         <ChatPanel
           messages={messages}
-          onSendMessage={sendMessage}
+          onSendMessage={sendMessageWrapped}
           isLoading={isLoading}
           streamingContent={streamingContent}
-          placeholder={t('agentCreator.placeholder', 'Describe the agent you want to create...')}
+          placeholder={
+            editSlug
+              ? t('agentCreator.editPlaceholder', 'Describe the changes you want to make...')
+              : t('agentCreator.placeholder', 'Describe the agent you want to create...')
+          }
         />
       </div>
     </div>

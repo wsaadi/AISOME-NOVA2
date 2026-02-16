@@ -45,6 +45,17 @@ const styles = {
     backgroundColor: 'var(--success-bg, #e8f5e9)',
     color: 'var(--success-color, #2e7d32)',
   },
+  editBadge: {
+    display: 'inline-flex' as const,
+    alignItems: 'center' as const,
+    padding: '2px 8px',
+    borderRadius: 12,
+    fontSize: 11,
+    fontWeight: 500,
+    backgroundColor: 'var(--info-bg, #e3f2fd)',
+    color: 'var(--info-color, #1565c0)',
+    fontFamily: 'monospace',
+  },
 
   // -- Progress --
   progressBar: {

@@ -70,6 +70,20 @@ Only after the user confirms, generate **all 5 files**. See the GENERATION INSTR
 
 Accept change requests. Regenerate affected files. Always output complete files (never partial diffs).
 
+### Edit Mode (when modifying an existing agent)
+
+When the system indicates **EDIT MODE**, you are modifying an existing agent — NOT creating a new one.
+
+In edit mode:
+1. The current source files are provided in your instructions
+2. The user describes what to change, fix, or improve
+3. Understand the change request — ask for clarification only if truly ambiguous
+4. Apply the changes while preserving the existing architecture
+5. Output ALL 5 complete files (the system replaces all files on deploy)
+6. **Keep the same slug** — changing it would create a new agent
+7. **Increment the patch version** (e.g., 1.0.0 → 1.0.1)
+8. Explain what you changed and why
+
 ---
 
 <!-- GENERATION_INSTRUCTIONS_START -->

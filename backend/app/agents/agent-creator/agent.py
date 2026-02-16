@@ -43,12 +43,18 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 _GENERATION_MARKER = "<!-- GENERATION_INSTRUCTIONS_START -->"
+_EDIT_MODE_MARKER = "<!-- EDIT_MODE_INSTRUCTIONS -->"
 
 # Minimum number of user messages before generation phase can be entered.
 # The user must ALSO confirm explicitly (keyword match) — count alone
 # never triggers generation.  This lets the LLM naturally progress
 # through question → summary → confirmation.
 _MIN_MESSAGES_FOR_GENERATION = 3
+_MIN_MESSAGES_FOR_GENERATION_EDIT = 1  # Edit mode: generate on first confirmation
+
+# Root path for reading existing agent source files
+_AGENTS_ROOT = Path(__file__).parent.parent
+_FRONTEND_AGENTS_ROOT = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "agents"
 
 # Keywords that signal the user wants to skip to generation or confirm
 _CONFIRMATION_KEYWORDS = [
@@ -123,6 +129,11 @@ class AgentCreatorAgent(BaseAgent):
         - At least _MIN_MESSAGES_FOR_GENERATION user messages, AND
         - An explicit confirmation keyword in the latest message
 
+        Edit mode:
+        - Activated when message metadata contains edit_agent_slug
+        - Loads existing agent source files and injects into context
+        - Faster path to generation (fewer questions required)
+
         NOTE: engine.py saves the user message to the session BEFORE calling
         handle_message, so history already contains the current message.
         We do NOT add +1 to the count.
@@ -131,6 +142,16 @@ class AgentCreatorAgent(BaseAgent):
 
         context.set_progress(10, t("agent_creator.progress.loading_prompt", lang))
 
+        # Detect edit mode from metadata
+        edit_slug = self._detect_edit_mode(message, context)
+        edit_source_files: dict[str, str] = {}
+        if edit_slug:
+            edit_source_files = self._load_agent_source(edit_slug)
+            logger.info(
+                f"[agent-creator] EDIT MODE: slug={edit_slug}, "
+                f"files={list(edit_source_files.keys())}"
+            )
+
         # Determine conversation phase from history
         # NOTE: the current user message is ALREADY in history (saved by engine.py)
         context.set_progress(20, t("agent_creator.progress.loading_history", lang))
@@ -138,12 +159,12 @@ class AgentCreatorAgent(BaseAgent):
         user_msg_count = self._count_user_messages(history)
 
         in_generation_phase = self._should_enter_generation(
-            user_msg_count, message.content
+            user_msg_count, message.content, edit_mode=bool(edit_slug),
         )
         logger.info(
             f"[agent-creator] handle_message: history={len(history)} msgs, "
             f"user_count={user_msg_count}, phase={'GENERATION' if in_generation_phase else 'QUESTION'}, "
-            f"msg={message.content[:80]!r}"
+            f"edit_mode={bool(edit_slug)}, msg={message.content[:80]!r}"
         )
 
         # Load live catalogs from registries
@@ -155,11 +176,14 @@ class AgentCreatorAgent(BaseAgent):
             generation_phase=in_generation_phase,
             tool_catalog=tool_catalog,
             connector_catalog=connector_catalog,
+            edit_mode=bool(edit_slug),
+            edit_source_files=edit_source_files,
         )
 
         # Build conversation from history (current message already included)
         conversation = self._build_conversation(
-            history, in_generation_phase
+            history, in_generation_phase, edit_slug=edit_slug,
+            edit_source_files=edit_source_files,
         )
 
         context.set_progress(30, t("agent_creator.progress.generating", lang))
@@ -242,16 +266,21 @@ class AgentCreatorAgent(BaseAgent):
         Files are extracted after the full response is accumulated.
         HARD BLOCK: files are never extracted during question phase.
         """
+        edit_slug = self._detect_edit_mode(message, context)
+        edit_source_files: dict[str, str] = {}
+        if edit_slug:
+            edit_source_files = self._load_agent_source(edit_slug)
+
         history = await context.memory.get_history(limit=50) if context.memory else []
         user_msg_count = self._count_user_messages(history)
 
         in_generation_phase = self._should_enter_generation(
-            user_msg_count, message.content
+            user_msg_count, message.content, edit_mode=bool(edit_slug),
         )
         logger.info(
             f"[agent-creator] handle_message_stream: history={len(history)} msgs, "
             f"user_count={user_msg_count}, phase={'GENERATION' if in_generation_phase else 'QUESTION'}, "
-            f"msg={message.content[:80]!r}"
+            f"edit_mode={bool(edit_slug)}, msg={message.content[:80]!r}"
         )
 
         tool_catalog = await self._build_tool_catalog(context)
@@ -260,8 +289,13 @@ class AgentCreatorAgent(BaseAgent):
             generation_phase=in_generation_phase,
             tool_catalog=tool_catalog,
             connector_catalog=connector_catalog,
+            edit_mode=bool(edit_slug),
+            edit_source_files=edit_source_files,
         )
-        conversation = self._build_conversation(history, in_generation_phase)
+        conversation = self._build_conversation(
+            history, in_generation_phase, edit_slug=edit_slug,
+            edit_source_files=edit_source_files,
+        )
 
         accumulated = ""
         async for token in context.llm.stream(
@@ -332,33 +366,35 @@ class AgentCreatorAgent(BaseAgent):
         return count
 
     def _should_enter_generation(
-        self, user_msg_count: int, current_message: str
+        self, user_msg_count: int, current_message: str,
+        edit_mode: bool = False,
     ) -> bool:
         """
         Determine whether the conversation should enter generation phase.
 
         Rules:
-        - Always question phase on 1st message
+        - Always question phase on 1st message (in creation mode)
         - Generation REQUIRES both:
           a) at least _MIN_MESSAGES_FOR_GENERATION user messages, AND
           b) an explicit confirmation keyword in the latest message
-        - Message count alone NEVER triggers generation — the LLM must
-          first present a summary and the user must confirm.
-
-        This prevents the system prompt from switching to the full
-        823-line generation spec prematurely, which confuses the model.
+        - In edit mode: threshold is lower (_MIN_MESSAGES_FOR_GENERATION_EDIT)
+          and any non-trivial message triggers generation immediately
+          (the user describes the change they want — no need for Q&A)
 
         Even if the LLM ignores the question-phase prompt, the hard block
         in handle_message will prevent file extraction.
         """
-        if user_msg_count < _MIN_MESSAGES_FOR_GENERATION:
+        min_msgs = _MIN_MESSAGES_FOR_GENERATION_EDIT if edit_mode else _MIN_MESSAGES_FOR_GENERATION
+
+        if user_msg_count < min_msgs:
             return False
 
+        # In edit mode, always enter generation after min messages
+        # (the user describes changes, no need for confirmation keywords)
+        if edit_mode:
+            return True
+
         # Require explicit confirmation keyword.
-        # To avoid false positives (e.g. "oui clause alternatives" is NOT
-        # a confirmation — it's answering a question), only match when:
-        #   - The message is short (≤ 30 chars): likely a pure confirmation
-        #   - OR the keyword matches the entire stripped message
         lower = current_message.lower().strip()
         is_short = len(lower) <= 30
         for keyword in _CONFIRMATION_KEYWORDS:
@@ -368,6 +404,47 @@ class AgentCreatorAgent(BaseAgent):
                 return True
 
         return False
+
+    # ------------------------------------------------------------------
+    # Edit mode helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _detect_edit_mode(message: UserMessage, context: AgentContext) -> str | None:
+        """
+        Detect if the conversation is in edit mode.
+
+        Checks current message metadata for edit_agent_slug.
+        Since sendMessageWrapped in the frontend always includes
+        edit_agent_slug in metadata when in edit mode, every message
+        in the conversation will carry this flag.
+        """
+        return (message.metadata or {}).get("edit_agent_slug")
+
+    @staticmethod
+    def _load_agent_source(slug: str) -> dict[str, str]:
+        """Load source files of an existing agent from the filesystem."""
+        files: dict[str, str] = {}
+
+        backend_dir = _AGENTS_ROOT / slug
+        frontend_dir = _FRONTEND_AGENTS_ROOT / slug
+
+        file_paths = {
+            "backend/manifest.json": backend_dir / "manifest.json",
+            "backend/agent.py": backend_dir / "agent.py",
+            "backend/prompts/system.md": backend_dir / "prompts" / "system.md",
+            "frontend/index.tsx": frontend_dir / "index.tsx",
+            "frontend/styles.ts": frontend_dir / "styles.ts",
+        }
+
+        for key, path in file_paths.items():
+            if path.exists():
+                try:
+                    files[key] = path.read_text(encoding="utf-8")
+                except Exception as e:
+                    logger.warning(f"Failed to read {path}: {e}")
+
+        return files
 
     # ------------------------------------------------------------------
     # Live catalog injection
@@ -448,6 +525,8 @@ class AgentCreatorAgent(BaseAgent):
         generation_phase: bool = False,
         tool_catalog: str = "",
         connector_catalog: str = "",
+        edit_mode: bool = False,
+        edit_source_files: dict[str, str] | None = None,
     ) -> str:
         """
         Load the system prompt, optionally truncated for question phase.
@@ -460,6 +539,10 @@ class AgentCreatorAgent(BaseAgent):
         In generation phase:
           - The full prompt is returned including all framework reference
           - Tool and connector catalogs are injected dynamically from the live registries
+
+        In edit mode:
+          - Existing agent source files are injected into the prompt
+          - The LLM is instructed to modify the existing code, not create from scratch
         """
         path = Path(__file__).parent / "prompts" / "system.md"
         full_prompt = path.read_text(encoding="utf-8")
@@ -469,7 +552,11 @@ class AgentCreatorAgent(BaseAgent):
         full_prompt = full_prompt.replace("{{CONNECTOR_CATALOG}}", connector_catalog or "_No connectors available._")
 
         if generation_phase:
-            return full_prompt
+            prompt = full_prompt
+            # In edit mode generation phase, append current source files
+            if edit_mode and edit_source_files:
+                prompt += self._build_edit_mode_prompt(edit_source_files)
+            return prompt
 
         # Question phase: strip everything after the generation marker
         marker_pos = full_prompt.find(_GENERATION_MARKER)
@@ -477,27 +564,75 @@ class AgentCreatorAgent(BaseAgent):
             return full_prompt
 
         question_prompt = full_prompt[:marker_pos].rstrip()
-        question_prompt += (
-            "\n\n---\n\n"
-            "## CURRENT STATUS: QUESTION PHASE\n\n"
-            "You are in the **QUESTION PHASE**. Your ONLY job right now:\n"
-            "1. Read the user's message\n"
-            "2. Ask ONE clarifying question to better understand their needs\n"
-            "3. Do NOT generate any code, files, or technical output\n"
-            "4. Do NOT use <<<FILE: markers — you don't have access to them yet\n"
-            "5. Keep your response conversational and focused\n\n"
-            "Once you have gathered enough information (purpose, workflow, UI layout, "
-            "tools/connectors), present a structured summary and ask for confirmation. "
-            "The system will then give you access to the generation instructions."
-        )
+
+        if edit_mode:
+            # Edit mode question phase: shorter, focused on understanding the change
+            question_prompt += (
+                "\n\n---\n\n"
+                "## CURRENT STATUS: EDIT MODE — UNDERSTANDING CHANGES\n\n"
+                "You are editing an **existing agent**. The user will describe what they want to change, fix, or improve.\n\n"
+                "Your job right now:\n"
+                "1. Read the user's change request carefully\n"
+                "2. If the request is clear enough, ask for confirmation to proceed\n"
+                "3. If unclear, ask ONE clarifying question about what specifically to change\n"
+                "4. Do NOT generate any code, files, or technical output yet\n"
+                "5. Do NOT use <<<FILE: markers\n\n"
+                "Present a brief summary of the planned changes and ask for confirmation. "
+                "The system will then give you the current source files and generation instructions."
+            )
+        else:
+            question_prompt += (
+                "\n\n---\n\n"
+                "## CURRENT STATUS: QUESTION PHASE\n\n"
+                "You are in the **QUESTION PHASE**. Your ONLY job right now:\n"
+                "1. Read the user's message\n"
+                "2. Ask ONE clarifying question to better understand their needs\n"
+                "3. Do NOT generate any code, files, or technical output\n"
+                "4. Do NOT use <<<FILE: markers — you don't have access to them yet\n"
+                "5. Keep your response conversational and focused\n\n"
+                "Once you have gathered enough information (purpose, workflow, UI layout, "
+                "tools/connectors), present a structured summary and ask for confirmation. "
+                "The system will then give you access to the generation instructions."
+            )
         return question_prompt
+
+    @staticmethod
+    def _build_edit_mode_prompt(source_files: dict[str, str]) -> str:
+        """Build the edit mode section injected into the system prompt."""
+        parts = [
+            "\n\n---\n\n"
+            "## EDIT MODE — MODIFYING AN EXISTING AGENT\n\n"
+            "You are **modifying an existing agent**, NOT creating one from scratch.\n\n"
+            "### Rules for edit mode:\n"
+            "1. **Read the current source files** below carefully before making changes\n"
+            "2. **Only modify what the user requested** — do not refactor unrelated code\n"
+            "3. **Preserve the existing structure** — keep the same class names, slug, and overall architecture\n"
+            "4. **Output ALL 5 files** even if only some changed — the system replaces all files on deploy\n"
+            "5. **Keep the same slug** in manifest.json — changing it would create a new agent instead of updating\n"
+            "6. **Increment the patch version** (e.g., 1.0.0 → 1.0.1) to reflect the update\n\n"
+            "### Current source files:\n\n"
+        ]
+
+        for filepath, content in sorted(source_files.items()):
+            parts.append(f"#### `{filepath}`\n```\n{content}\n```\n\n")
+
+        parts.append(
+            "### Your task:\n"
+            "Apply the user's requested changes to the files above. "
+            "Output the complete updated files using <<<FILE:path>>> markers. "
+            "Explain what you changed and why.\n"
+        )
+
+        return "".join(parts)
 
     # ------------------------------------------------------------------
     # Conversation building
     # ------------------------------------------------------------------
 
     def _build_conversation(
-        self, history: list, generation_phase: bool
+        self, history: list, generation_phase: bool,
+        edit_slug: str | None = None,
+        edit_source_files: dict[str, str] | None = None,
     ) -> str:
         """
         Build the conversation string from history.
@@ -506,8 +641,18 @@ class AgentCreatorAgent(BaseAgent):
         engine.py before handle_message is called), so we don't re-add it.
 
         Injects a system reminder during question phase to reinforce behavior.
+        In edit mode, injects context about the agent being edited.
         """
         parts: list[str] = []
+
+        # In edit mode, inject context at the start of the conversation
+        if edit_slug and edit_source_files:
+            parts.append(
+                f"[system]: EDIT MODE — The user is modifying the existing agent '{edit_slug}'. "
+                f"The current source files have been provided in your instructions. "
+                f"Apply the user's requested changes and regenerate all files."
+            )
+
         for msg in history:
             role = getattr(msg, "role", "user")
             # Handle MessageRole enum
@@ -517,12 +662,20 @@ class AgentCreatorAgent(BaseAgent):
 
         # In question phase, inject a reminder after the conversation
         if not generation_phase:
-            parts.append(
-                "[system]: REMINDER — You are in the QUESTION PHASE. "
-                "Ask ONE clarifying question about the user's needs. "
-                "Do NOT generate code, files, or technical output. "
-                "Do NOT use <<<FILE: markers."
-            )
+            if edit_slug:
+                parts.append(
+                    f"[system]: REMINDER — You are in EDIT MODE for agent '{edit_slug}'. "
+                    "Understand the user's change request. If clear, present a brief summary "
+                    "of planned changes and ask for confirmation. "
+                    "Do NOT generate code or use <<<FILE: markers yet."
+                )
+            else:
+                parts.append(
+                    "[system]: REMINDER — You are in the QUESTION PHASE. "
+                    "Ask ONE clarifying question about the user's needs. "
+                    "Do NOT generate code, files, or technical output. "
+                    "Do NOT use <<<FILE: markers."
+                )
 
         return "\n\n".join(parts)
 

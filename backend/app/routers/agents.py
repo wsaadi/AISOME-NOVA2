@@ -1,7 +1,9 @@
 import logging
 import zipfile
+from pathlib import Path
+from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -12,6 +14,9 @@ from app.schemas.agent import AgentCreate, AgentUpdate, AgentResponse
 from app.middleware.auth import get_current_user, require_permission
 from app.services.rbac import get_accessible_agent_ids
 from app.services.agent_manager import get_agent_manager
+
+_BACKEND_AGENTS_ROOT = Path(__file__).parent.parent / "agents"
+_FRONTEND_AGENTS_ROOT = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "agents"
 
 router = APIRouter(prefix="/api/agents", tags=["Agents"])
 
@@ -164,9 +169,60 @@ async def export_agent(
     )
 
 
+@router.get("/by-slug/{slug}/source")
+async def get_agent_source(
+    slug: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns the full source files of a framework agent for editing."""
+    import re
+    if not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$", slug):
+        raise HTTPException(status_code=400, detail="Invalid slug format")
+
+    # Check agent exists in DB
+    result = await db.execute(select(Agent).where(Agent.slug == slug))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Read source files from filesystem
+    backend_dir = _BACKEND_AGENTS_ROOT / slug
+    frontend_dir = _FRONTEND_AGENTS_ROOT / slug
+
+    files: dict[str, str] = {}
+    file_paths = {
+        "backend/manifest.json": backend_dir / "manifest.json",
+        "backend/agent.py": backend_dir / "agent.py",
+        "backend/prompts/system.md": backend_dir / "prompts" / "system.md",
+        "frontend/index.tsx": frontend_dir / "index.tsx",
+        "frontend/styles.ts": frontend_dir / "styles.ts",
+    }
+
+    for key, path in file_paths.items():
+        if path.exists():
+            try:
+                files[key] = path.read_text(encoding="utf-8")
+            except Exception:
+                pass
+
+    if not files:
+        raise HTTPException(
+            status_code=404,
+            detail="No source files found for this agent (database-only agent)",
+        )
+
+    return {
+        "slug": slug,
+        "name": agent.name,
+        "files": files,
+    }
+
+
 @router.post("/import", response_model=AgentResponse)
 async def import_agent(
     file: UploadFile = File(...),
+    overwrite: Optional[str] = Query(None, description="Slug of agent to overwrite"),
     current_user: User = Depends(require_permission("agents", "import")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -196,7 +252,9 @@ async def import_agent(
 
     try:
         manager = get_agent_manager()
-        agent = await manager.import_agent(db, content, created_by=current_user.id)
+        agent = await manager.import_agent(
+            db, content, created_by=current_user.id, overwrite_slug=overwrite,
+        )
     except Exception as e:
         logger.exception("Failed to import agent")
         raise HTTPException(status_code=500, detail=f"Import failed: {e}")

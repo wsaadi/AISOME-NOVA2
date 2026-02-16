@@ -90,6 +90,7 @@ class AgentManager:
     async def import_agent(
         self, db: AsyncSession, data: bytes, created_by: Optional[UUID] = None,
         name_override: Optional[str] = None, slug_override: Optional[str] = None,
+        overwrite_slug: Optional[str] = None,
     ) -> Agent:
         buffer = io.BytesIO(data)
         with zipfile.ZipFile(buffer, "r") as zf:
@@ -128,8 +129,24 @@ class AgentManager:
 
             # ── Deploy framework files to filesystem ──
             if is_framework:
-                slug_for_deploy = slug_override or agent_json.get("slug", "unknown-agent")
-                self._deploy_framework_files(zf, names, slug_for_deploy)
+                deploy_slug = overwrite_slug or slug_override or agent_json.get("slug", "unknown-agent")
+                self._deploy_framework_files(zf, names, deploy_slug)
+
+        # ── Overwrite mode: update existing agent ──
+        if overwrite_slug:
+            result = await db.execute(select(Agent).where(Agent.slug == overwrite_slug))
+            existing_agent = result.scalar_one_or_none()
+            if existing_agent:
+                existing_agent.name = name_override or agent_json["name"]
+                existing_agent.description = agent_json.get("description")
+                existing_agent.version = agent_json.get("version", "1.0.0")
+                existing_agent.agent_type = agent_json.get("agent_type", "conversational")
+                existing_agent.config = agent_json.get("config", {})
+                existing_agent.system_prompt = agent_json.get("system_prompt")
+                await db.commit()
+                await db.refresh(existing_agent)
+                logger.info(f"Overwritten agent '{overwrite_slug}'")
+                return existing_agent
 
         slug = slug_override or agent_json["slug"]
         existing = await db.execute(select(Agent).where(Agent.slug == slug))

@@ -12,7 +12,7 @@
  */
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Box, Typography, CircularProgress, Paper, IconButton, Tooltip, alpha, useTheme,
@@ -147,6 +147,7 @@ const DefaultAgentView: React.FC<{ agent: AgentManifest; sessionId: string }> = 
 
 const AgentRuntimePage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -156,7 +157,10 @@ const AgentRuntimePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const sessionId = useMemo(() => slug ? getSessionId(slug) : '', [slug]);
+  // Include edit param in session key so editing gets its own session
+  const editSlug = searchParams.get('edit');
+  const sessionKey = editSlug ? `${slug}-edit-${editSlug}` : slug;
+  const sessionId = useMemo(() => sessionKey ? getSessionId(sessionKey) : '', [sessionKey]);
 
   const fetchAgent = useCallback(async () => {
     if (!slug) return;
