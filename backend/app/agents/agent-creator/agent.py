@@ -510,8 +510,8 @@ class AgentCreatorAgent(BaseAgent):
         lines.append("| Slug | Description |")
         lines.append("|------|-------------|")
         for conn in connectors:
-            slug = conn.get("slug", conn.slug if hasattr(conn, "slug") else "?")
-            desc = conn.get("description", conn.description if hasattr(conn, "description") else "")
+            slug = getattr(conn, "slug", "?")
+            desc = getattr(conn, "description", "")
             lines.append(f"| `{slug}` | {desc} |")
 
         return "\n".join(lines)
