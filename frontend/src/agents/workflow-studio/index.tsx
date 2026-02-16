@@ -448,12 +448,40 @@ const WorkflowStudioView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 
       {activeTab === 'editor' && (
         <div style={styles.editorArea}>
-          <iframe
-            src={n8nUrl}
-            style={styles.iframe}
-            title="N8N Workflow Editor"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-          />
+          <div style={styles.editorLauncher}>
+            <span style={styles.editorLauncherIcon} className="material-icons">
+              open_in_new
+            </span>
+            <h3 style={styles.editorLauncherTitle}>
+              {t('workflowStudio.editorTitle', 'N8N Visual Editor')}
+            </h3>
+            <p style={styles.editorLauncherDesc}>
+              {t('workflowStudio.editorDesc', 'Open the N8N visual workflow editor in a new tab. Design your automation with the drag-and-drop interface, then export the JSON and import it here.')}
+            </p>
+            <div style={styles.editorLauncherActions}>
+              <button
+                style={styles.editorLauncherBtn}
+                onClick={() => window.open(n8nUrl, '_blank', 'noopener')}
+              >
+                <span className="material-icons" style={{ fontSize: 18 }}>launch</span>
+                {t('workflowStudio.openEditor', 'Open N8N Editor')}
+              </button>
+            </div>
+            <div style={styles.editorLauncherSteps}>
+              <div style={styles.editorStep}>
+                <span style={styles.editorStepNum}>1</span>
+                <span>{t('workflowStudio.step1', 'Create or edit your workflow in N8N')}</span>
+              </div>
+              <div style={styles.editorStep}>
+                <span style={styles.editorStepNum}>2</span>
+                <span>{t('workflowStudio.step2', 'Export the workflow as JSON (Menu → Download)')}</span>
+              </div>
+              <div style={styles.editorStep}>
+                <span style={styles.editorStepNum}>3</span>
+                <span>{t('workflowStudio.step3', 'Import it here via the "Import JSON" tab')}</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
