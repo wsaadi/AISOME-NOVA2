@@ -52,6 +52,7 @@ TRANSLATIONS = {
         "agent_creator.val.no_default_export": "index.tsx must have a default export",
         "agent_creator.val.no_agent_view_props": "index.tsx must implement AgentViewProps",
         "agent_creator.val.forbidden_frontend_import": "Forbidden import in index.tsx: {name}",
+        "agent_creator.val.missing_styles_import": "index.tsx uses 'styles.*' but is missing 'import styles from \"./styles\"'",
         "agent_creator.val.validation_warnings": "Validation warnings:",
     },
     "fr": {
@@ -107,6 +108,7 @@ TRANSLATIONS = {
         "agent_creator.val.no_default_export": "index.tsx doit avoir un export par défaut",
         "agent_creator.val.no_agent_view_props": "index.tsx doit implémenter AgentViewProps",
         "agent_creator.val.forbidden_frontend_import": "Import interdit dans index.tsx : {name}",
+        "agent_creator.val.missing_styles_import": "index.tsx utilise 'styles.*' mais il manque 'import styles from \"./styles\"'",
         "agent_creator.val.validation_warnings": "Avertissements de validation :",
     },
     "es": {
@@ -162,6 +164,7 @@ TRANSLATIONS = {
         "agent_creator.val.no_default_export": "index.tsx debe tener un export por defecto",
         "agent_creator.val.no_agent_view_props": "index.tsx debe implementar AgentViewProps",
         "agent_creator.val.forbidden_frontend_import": "Importación prohibida en index.tsx: {name}",
+        "agent_creator.val.missing_styles_import": "index.tsx usa 'styles.*' pero falta 'import styles from \"./styles\"'",
         "agent_creator.val.validation_warnings": "Advertencias de validación:",
     },
 }

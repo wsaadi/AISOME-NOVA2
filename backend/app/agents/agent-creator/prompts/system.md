@@ -431,6 +431,7 @@ import { AgentViewProps } from 'framework/types';
 import { ChatPanel, FileUpload, ActionButton, DataTable, MarkdownView, SettingsPanel } from 'framework/components';
 import { useAgent, useAgentStorage, useWebSocket } from 'framework/hooks';
 import { ChatMessage, AgentResponse } from 'framework/types';
+import styles from './styles';
 
 const {Name}View: React.FC<AgentViewProps> = ({ agent, sessionId, userId }) => {
   const { sendMessage, messages, isLoading, streamingContent } = useAgent(agent.slug, sessionId);
@@ -456,6 +457,8 @@ import { useAgent, useAgentStorage, useWebSocket } from 'framework/hooks';
 import { ChatMessage, AgentResponse, AgentManifest } from 'framework/types';
 // React
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+// Styles (MANDATORY — always import from ./styles)
+import styles from './styles';
 ```
 
 #### FORBIDDEN imports
@@ -610,9 +613,12 @@ export default styles;
 
 **You MUST choose the most appropriate pattern based on the agent's purpose. Do NOT default to chat-only for every agent.**
 
+**NOTE**: These patterns show only the component body. Your generated `index.tsx` MUST include ALL imports from the mandatory structure above, including `import styles from './styles';`. Every pattern below uses `styles.*` — this REQUIRES the import.
+
 ### Pattern A: Chat-Only
 Best for: pure conversational agents, Q&A bots, writing assistants.
 ```tsx
+// Requires: import styles from './styles';
 const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   const { sendMessage, messages, isLoading, streamingContent } = useAgent(agent.slug, sessionId);
   return (
@@ -631,6 +637,7 @@ const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 ### Pattern B: Chat + File Upload
 Best for: document analysis, file processing, PDF extraction, image analysis.
 ```tsx
+// Requires: import styles from './styles';
 const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   const { sendMessage, messages, isLoading, streamingContent } = useAgent(agent.slug, sessionId);
   const storage = useAgentStorage(agent.slug);
@@ -662,6 +669,7 @@ const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 ### Pattern C: Chat + Data Panel (side by side)
 Best for: data analysis, CRM agents, reporting, structured output.
 ```tsx
+// Requires: import styles from './styles';
 const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   const { sendMessage, messages, isLoading, streamingContent } = useAgent(agent.slug, sessionId);
   const [tableData, setTableData] = useState<Record<string, unknown>[]>([]);
@@ -698,6 +706,7 @@ const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 ### Pattern D: Settings + Chat
 Best for: configurable agents with tunable parameters.
 ```tsx
+// Requires: import styles from './styles';
 const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   const { sendMessage, messages, isLoading, streamingContent } = useAgent(agent.slug, sessionId);
   const [settings, setSettings] = useState({ temperature: 0.7, style: 'professional' });
@@ -731,6 +740,7 @@ const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 ### Pattern E: File Upload + Results Display (no chat)
 Best for: batch processing, document conversion, single-action agents.
 ```tsx
+// Requires: import styles from './styles';
 const View: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
   const { sendMessage, messages, isLoading } = useAgent(agent.slug, sessionId);
   const storage = useAgentStorage(agent.slug);
@@ -845,6 +855,7 @@ Before outputting files, verify ALL of these:
 - [ ] `frontend/index.tsx` — UI pattern matches the agent's purpose (NOT just ChatPanel for everything)
 - [ ] `frontend/index.tsx` — All component props match EXACT signatures above
 - [ ] `frontend/index.tsx` — All hook calls match EXACT return types above
+- [ ] `frontend/index.tsx` — Has `import styles from './styles'` (REQUIRED when using `styles.*`)
 - [ ] `frontend/index.tsx` — DataTable `render` callbacks use `String(value)`, never raw `{value}`
 - [ ] `frontend/index.tsx` — No Unicode escape sequences — use native UTF-8 characters
 - [ ] `frontend/styles.ts` — Valid style objects with `as const`
