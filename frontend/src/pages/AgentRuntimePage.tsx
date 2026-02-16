@@ -181,7 +181,7 @@ const AgentRuntimePage: React.FC = () => {
         const dbAgent = dbRes.data.find((a: any) => a.slug === slug);
         if (dbAgent) {
           const cfg = dbAgent.config || {};
-          setAgent({
+          const agentData: any = {
             name: dbAgent.name,
             slug: dbAgent.slug,
             version: dbAgent.version || '1.0.0',
@@ -194,7 +194,14 @@ const AgentRuntimePage: React.FC = () => {
             triggers: cfg.triggers || [{ type: 'user_message', config: {} }],
             capabilities: cfg.capabilities || [],
             min_platform_version: '1.0.0',
-          });
+          };
+          // For n8n_workflow agents, include the full config so the dynamic
+          // renderer can access workflow_analysis, n8n_workflow_id, etc.
+          if (dbAgent.agent_type === 'n8n_workflow') {
+            agentData.agent_type = 'n8n_workflow';
+            agentData.config = cfg;
+          }
+          setAgent(agentData);
         } else {
           setError(t('agents.notFound') || `Agent "${slug}" not found`);
         }
@@ -208,8 +215,12 @@ const AgentRuntimePage: React.FC = () => {
 
   useEffect(() => { fetchAgent(); }, [fetchAgent]);
 
-  // Check if a custom view is registered for this agent
-  const CustomView = slug ? agentViews[slug] : undefined;
+  // Check if a custom view is registered for this agent.
+  // For n8n_workflow agents, use the shared n8n-workflow dynamic renderer
+  // which reads workflow_analysis from agent.config to build the appropriate UI.
+  const isWorkflowAgent = agent?.category === 'n8n_workflow' || (agent as any)?.agent_type === 'n8n_workflow';
+  const viewKey = isWorkflowAgent ? 'n8n-workflow' : slug;
+  const CustomView = viewKey ? agentViews[viewKey] : undefined;
   const userId = user?.id ? Number(user.id) : 0;
 
   if (loading) {

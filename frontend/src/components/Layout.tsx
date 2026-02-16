@@ -80,7 +80,7 @@ const Layout: React.FC = () => {
     { path: '/dashboard', icon: <Dashboard />, label: t('nav.dashboard'), show: true },
     { divider: true, show: true },
     { path: '/catalog', icon: <SmartToy />, label: t('nav.catalog'), show: true },
-    { path: '/agent/agent-creator', icon: <AutoFixHigh />, label: t('nav.agentCreator'), show: true },
+    { path: '/agent/workflow-studio', icon: <AutoFixHigh />, label: t('nav.workflowStudio'), show: true },
     { path: '/catalog/manage', icon: <Inventory />, label: t('nav.catalogManagement'), show: hasPermission('catalog_management', 'read') },
     { divider: true, show: true },
     { path: '/consumption', icon: <Assessment />, label: t('nav.consumption'), show: hasPermission('consumption', 'read') },

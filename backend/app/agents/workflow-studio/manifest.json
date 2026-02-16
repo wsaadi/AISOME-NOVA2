@@ -1,0 +1,19 @@
+{
+  "name": "Workflow Studio",
+  "slug": "workflow-studio",
+  "version": "1.0.0",
+  "description": "Create, import and publish N8N workflow automations as platform agents — via natural language or JSON import",
+  "author": "AISOME",
+  "icon": "account_tree",
+  "category": "development",
+  "tags": ["workflow", "n8n", "automation", "no-code", "creator"],
+  "dependencies": {
+    "tools": [],
+    "connectors": ["n8n"]
+  },
+  "triggers": [
+    {"type": "user_message", "config": {}}
+  ],
+  "capabilities": ["streaming"],
+  "min_platform_version": "1.0.0"
+}
