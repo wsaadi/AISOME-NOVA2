@@ -888,6 +888,12 @@ class AgentCreatorAgent(BaseAgent):
         if "AgentViewProps" not in code:
             errors.append(t("agent_creator.val.no_agent_view_props", lang))
 
+        # Check for styles import when styles.* is used
+        if "styles." in code and "import styles" not in code:
+            errors.append(
+                t("agent_creator.val.missing_styles_import", lang)
+            )
+
         for forbidden in FORBIDDEN_FRONTEND_IMPORTS:
             if forbidden in code:
                 errors.append(
