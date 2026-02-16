@@ -274,7 +274,7 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
-          <span style={styles.headerIcon}>{editSlug ? '\u270F\uFE0F' : '\u2728'}</span>
+          <span style={styles.headerIcon}>{editSlug ? '✏️' : '✨'}</span>
           <h3 style={styles.headerTitle}>
             {editSlug
               ? t('agentCreator.editTitle', 'Edit Agent')
@@ -345,7 +345,7 @@ const AgentCreatorView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
             {sortedFiles.map((path) => (
               <div key={path} style={styles.fileItem}>
                 <div style={styles.fileItemHeader} onClick={() => toggleFile(path)}>
-                  <span style={styles.fileToggle}>{expandedFiles.has(path) ? '\u25BC' : '\u25B6'}</span>
+                  <span style={styles.fileToggle}>{expandedFiles.has(path) ? '▼' : '▶'}</span>
                   <span style={styles.fileName}>{path}</span>
                 </div>
                 {expandedFiles.has(path) && (

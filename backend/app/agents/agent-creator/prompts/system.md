@@ -512,13 +512,14 @@ import _ from 'lodash';                    // FORBIDDEN
   columns={[                                   // Column[] (REQUIRED)
     { key: 'name', label: 'Name' },
     { key: 'value', label: 'Value', align: 'right' },
-    { key: 'status', label: 'Status', render: (val) => <span>{val}</span> },
+    { key: 'status', label: 'Status', render: (val) => <span>{String(val)}</span> },
   ]}
   rows={data}                                  // Record<string, unknown>[] (REQUIRED)
   emptyMessage="No data"                       // string (optional)
   dense={false}                                // boolean (optional)
 />
 ```
+**WARNING**: The `render` callback receives `value: unknown`. You MUST use `String(value)` to render it in JSX. Writing `{value}` directly causes a TypeScript error (`unknown` is not assignable to `ReactNode`). Always wrap with `String()`.
 
 **MarkdownView** — Render markdown
 ```tsx
@@ -794,6 +795,40 @@ The generated agent's LLM is configured **per-agent via the platform admin UI** 
 
 ---
 
+## TYPESCRIPT & RENDERING RULES — CRITICAL
+
+These rules prevent compilation errors and rendering bugs. Violating them will **break the generated agent's UI**.
+
+1. **DataTable `render` callback**: The `value` parameter is typed `unknown`. You MUST wrap it with `String(value)` before rendering in JSX. Never write `{value}` directly.
+   ```tsx
+   // WRONG — TypeScript error, breaks compilation:
+   render: (value) => <span>{value}</span>
+
+   // CORRECT:
+   render: (value) => <span>{String(value)}</span>
+   ```
+
+2. **Use native UTF-8 characters**: Never use Unicode escape sequences (`\u00e9`, `\u2728`, etc.) in string literals. Write the actual characters (`é`, `✨`, etc.) directly. Escapes render as raw text in some contexts.
+
+3. **CSS `as const` assertions**: All inline style objects must use `as const` for literal CSS values (`flexDirection`, `display`, etc.) to satisfy TypeScript's `CSSProperties` type.
+   ```tsx
+   // WRONG:
+   const styles = { container: { flexDirection: 'column' } };
+
+   // CORRECT:
+   const styles = { container: { flexDirection: 'column' as const } };
+   ```
+
+4. **Strict null handling**: Always provide fallbacks for optional values:
+   ```tsx
+   const items = data?.items ?? [];
+   const name = metadata?.name || 'Unknown';
+   ```
+
+5. **Hook return types**: Destructure hooks exactly as documented above. Do not invent additional return values.
+
+---
+
 ## GENERATION CHECKLIST
 
 Before outputting files, verify ALL of these:
@@ -810,6 +845,8 @@ Before outputting files, verify ALL of these:
 - [ ] `frontend/index.tsx` — UI pattern matches the agent's purpose (NOT just ChatPanel for everything)
 - [ ] `frontend/index.tsx` — All component props match EXACT signatures above
 - [ ] `frontend/index.tsx` — All hook calls match EXACT return types above
+- [ ] `frontend/index.tsx` — DataTable `render` callbacks use `String(value)`, never raw `{value}`
+- [ ] `frontend/index.tsx` — No Unicode escape sequences — use native UTF-8 characters
 - [ ] `frontend/styles.ts` — Valid style objects with `as const`
 - [ ] Class name = PascalCase(slug) + "Agent"
 - [ ] Component name = PascalCase(slug) + "View"
