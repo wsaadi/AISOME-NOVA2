@@ -371,7 +371,7 @@ class AgentEngine:
         )
         row = agent_config_result.fetchone()
 
-        # 2. Fallback: premier provider/model actif
+        # 2. Fallback: premier provider/model actif qui possède une clé API
         if not row:
             result = await self._db.execute(
                 text(
@@ -381,11 +381,29 @@ class AgentEngine:
                     JOIN llm_models m ON m.provider_id = p.id
                     WHERE p.is_active = true AND m.is_active = true
                     ORDER BY p.id ASC, m.id ASC
-                    LIMIT 1
                     """
                 )
             )
-            row = result.fetchone()
+            rows = result.fetchall()
+
+            # Prefer the first provider that actually has an API key in Vault
+            if self._vault and rows:
+                for candidate in rows:
+                    try:
+                        key = self._vault.get_api_key(candidate.provider_slug) or ""
+                    except Exception:
+                        key = ""
+                    if key:
+                        return {
+                            "provider_slug": candidate.provider_slug,
+                            "model_slug": candidate.model_slug,
+                            "api_key": key,
+                            "base_url": candidate.base_url or "",
+                        }
+
+            # Last resort: return first row even without key (will fail with
+            # a clear error message from _validate_config)
+            row = rows[0] if rows else None
 
         if not row:
             return {
