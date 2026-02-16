@@ -281,7 +281,13 @@
     "downloadJson": "Download JSON",
     "publish": "Publish as Agent",
     "publishing": "Publishing...",
-    "publishSuccess": "Agent \"{{name}}\" published! Open it from the catalog."
+    "publishSuccess": "Agent \"{{name}}\" published! Open it from the catalog.",
+    "editorTitle": "N8N Visual Editor",
+    "editorDesc": "Open the N8N visual workflow editor in a new tab. Design your automation with the drag-and-drop interface, then export the JSON and import it here.",
+    "openEditor": "Open N8N Editor",
+    "step1": "Create or edit your workflow in N8N",
+    "step2": "Export the workflow as JSON (Menu → Download)",
+    "step3": "Import it here via the \"Import JSON\" tab"
   },
   "workflowAgent": {
     "nodes": "nodes",

@@ -280,7 +280,13 @@
     "downloadJson": "Descargar JSON",
     "publish": "Publicar como Agente",
     "publishing": "Publicando...",
-    "publishSuccess": "Agente \"{{name}}\" publicado! Ábralo desde el catálogo."
+    "publishSuccess": "Agente \"{{name}}\" publicado! Ábralo desde el catálogo.",
+    "editorTitle": "Editor visual N8N",
+    "editorDesc": "Abra el editor visual de workflows N8N en una nueva pestaña. Diseñe su automatización con la interfaz de arrastrar y soltar, luego exporte el JSON e impórtelo aquí.",
+    "openEditor": "Abrir editor N8N",
+    "step1": "Cree o edite su workflow en N8N",
+    "step2": "Exporte el workflow como JSON (Menú → Descargar)",
+    "step3": "Impórtelo aquí en la pestaña \"Importar JSON\""
   },
   "workflowAgent": {
     "nodes": "nodos",
