@@ -99,7 +99,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
       APP_VERSION: ${APP_VERSION:-1.0.0}
       N8N_BASE_URL: ${N8N_BASE_URL:-http://n8n:5678}
-      N8N_API_KEY: ${N8N_API_KEY:-nova2-n8n-api-key}
+      N8N_API_KEY: ${N8N_API_KEY:-}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
