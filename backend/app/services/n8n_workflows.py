@@ -315,6 +315,25 @@ def analyze_workflow(workflow_json: dict) -> WorkflowAnalysis:
     # --- Determine UI mode ---
     analysis.ui_mode = _determine_ui_mode(analysis)
 
+    # --- Post-processing: when files are detected, replace generic textarea
+    #     inputs with file inputs so the UI shows a file uploader, not a
+    #     JSON textarea. ---
+    if analysis.has_file_upload:
+        generic_textarea_names = {"webhook_data", "input_data", "input_text"}
+        analysis.inputs = [
+            i for i in analysis.inputs
+            if not (i.input_type == "textarea" and i.name in generic_textarea_names)
+        ]
+        # Ensure at least one file input exists
+        if not any(i.input_type == "file" for i in analysis.inputs):
+            analysis.inputs.insert(0, WorkflowInput(
+                name="file_upload",
+                input_type="file",
+                label="Upload File",
+                description="Upload a file for processing",
+                required=True,
+            ))
+
     # --- If no inputs detected but workflow needs data, add generic input ---
     if not analysis.inputs and analysis.trigger_type == "manual":
         analysis.inputs.append(WorkflowInput(

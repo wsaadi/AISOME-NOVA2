@@ -16,8 +16,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentViewProps, ChatMessage } from 'framework/types';
-import { ChatPanel, ActionButton, MarkdownView } from 'framework/components';
-import { useAgent } from 'framework/hooks';
+import { ChatPanel, ActionButton, FileUpload, MarkdownView } from 'framework/components';
+import { useAgent, useAgentStorage } from 'framework/hooks';
 import styles from './styles';
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,9 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
 
   // Form state
   const [formValues, setFormValues] = useState<Record<string, string>>({});
+  // File upload state: maps input name → { key, fileName }
+  const [uploadedFiles, setUploadedFiles] = useState<Record<string, { key: string; fileName: string }>>({});
+  const storage = useAgentStorage(agent.slug);
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<Record<string, unknown> | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
@@ -96,6 +99,12 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
     setFormValues(prev => ({ ...prev, [name]: value }));
   }, []);
 
+  const handleFileUpload = useCallback(async (inputName: string, file: File) => {
+    const key = await storage.upload(file);
+    setUploadedFiles(prev => ({ ...prev, [inputName]: { key, fileName: file.name } }));
+    return key;
+  }, [storage]);
+
   const handleFormSubmit = useCallback(async () => {
     const workflowId = config?.n8n_workflow_id;
     if (!workflowId) return;
@@ -115,7 +124,16 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ input_data: formValues }),
+          body: JSON.stringify({
+            input_data: {
+              ...formValues,
+              ...Object.fromEntries(
+                Object.entries(uploadedFiles).map(([name, f]) => [
+                  name, { fileKey: f.key, fileName: f.fileName },
+                ])
+              ),
+            },
+          }),
         },
       );
 
@@ -136,7 +154,7 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
     } finally {
       setExecuting(false);
     }
-  }, [config, formValues, uiMode, analysis]);
+  }, [config, formValues, uploadedFiles, uiMode, analysis]);
 
   // --- Simple mode handler ---
   const handleSimpleExecute = useCallback(async () => {
@@ -285,9 +303,10 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
                 )}
 
                 {input.type === 'file' && (
-                  <input
-                    type="file"
-                    style={styles.formFileInput}
+                  <FileUpload
+                    onUpload={(file) => handleFileUpload(input.name, file)}
+                    label={t('workflowAgent.uploadFile', 'Upload file')}
+                    multiple={false}
                   />
                 )}
 
@@ -345,7 +364,13 @@ const N8NWorkflowView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
                       {input.label}
                       {input.required && <span style={styles.formRequired}>*</span>}
                     </label>
-                    {input.type === 'textarea' || input.type === 'prompt' ? (
+                    {input.type === 'file' ? (
+                      <FileUpload
+                        onUpload={(file) => handleFileUpload(input.name, file)}
+                        label={t('workflowAgent.uploadFile', 'Upload file')}
+                        multiple={false}
+                      />
+                    ) : input.type === 'textarea' || input.type === 'prompt' ? (
                       <textarea
                         style={styles.formTextarea}
                         value={formValues[input.name] || ''}
