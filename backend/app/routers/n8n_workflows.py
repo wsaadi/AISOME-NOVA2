@@ -37,6 +37,7 @@ from app.services.n8n_workflows import (
     get_n8n_execution,
     get_n8n_workflow,
     list_n8n_workflows,
+    setup_n8n_with_credentials,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,12 @@ class WorkflowPublishRequest(BaseModel):
     role_ids: list[UUID] = []
 
 
+class N8NSetupRequest(BaseModel):
+    """Provide N8N credentials to auto-generate an API key."""
+    email: str
+    password: str
+
+
 class WorkflowAnalysisResponse(BaseModel):
     """Response containing workflow analysis for UI generation."""
     workflow_id: str
@@ -76,6 +83,28 @@ class WorkflowAnalysisResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@router.post("/setup")
+async def setup_n8n(
+    request: N8NSetupRequest,
+    current_user: User = Depends(require_permission("agents", "write")),
+):
+    """
+    Configure N8N API access by providing N8N login credentials.
+
+    Logs into N8N with the provided email/password, generates an API key,
+    and caches it for all subsequent API calls. Use this when auto-setup
+    fails (e.g. N8N was already configured manually via the browser).
+    """
+    try:
+        masked_key = await setup_n8n_with_credentials(request.email, request.password)
+        return {"status": "ok", "api_key": masked_key}
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
 
 @router.get("/health")
 async def n8n_health(
