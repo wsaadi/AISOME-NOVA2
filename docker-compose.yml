@@ -99,8 +99,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
       APP_VERSION: ${APP_VERSION:-1.0.0}
       N8N_BASE_URL: ${N8N_BASE_URL:-http://n8n:5678}
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-nova2}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-nova2secret}
+      N8N_API_KEY: ${N8N_API_KEY:-nova2-n8n-api-key}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -160,9 +159,7 @@ services:
       N8N_PORT: 5678
       N8N_PROTOCOL: http
       WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
-      N8N_BASIC_AUTH_ACTIVE: "true"
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-nova2}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-nova2secret}
+      N8N_PUBLIC_API_DISABLED: "false"
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432

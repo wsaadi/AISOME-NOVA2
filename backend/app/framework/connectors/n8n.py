@@ -8,7 +8,7 @@ Provides actions for:
 - Executing workflows and polling results
 - Importing/exporting workflow JSON
 
-Authentication uses N8N's basic auth via platform config.
+Authentication uses N8N's REST API key (X-N8N-API-KEY header).
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 
+from app.framework.base.connector import BaseConnector
 from app.framework.schemas import (
     ConnectorAction,
     ConnectorErrorCode,
@@ -30,7 +31,7 @@ from app.framework.schemas import (
 logger = logging.getLogger(__name__)
 
 
-class N8NConnector:
+class N8NConnector(BaseConnector):
     """Platform connector for the embedded N8N automation engine."""
 
     slug = "n8n"
@@ -47,11 +48,10 @@ class N8NConnector:
             description="Native integration with the embedded N8N open-source workflow automation engine",
             version="1.0.0",
             category="automation",
-            auth_type="basic",
+            auth_type="api_key",
             config_schema=[
                 ToolParameter(name="base_url", type="string", description="N8N base URL", required=True),
-                ToolParameter(name="username", type="string", description="Basic auth username", required=True),
-                ToolParameter(name="password", type="string", description="Basic auth password", required=True),
+                ToolParameter(name="api_key", type="string", description="N8N REST API key", required=True),
             ],
             actions=[
                 ConnectorAction(
@@ -138,16 +138,18 @@ class N8NConnector:
         )
 
     async def connect(self, config: dict[str, Any]) -> None:
-        """Initialize HTTP client with basic auth."""
+        """Initialize HTTP client with API key auth."""
         self._base_url = config.get("base_url", "").rstrip("/")
-        username = config.get("username", "")
-        password = config.get("password", "")
+        api_key = config.get("api_key", "")
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if api_key:
+            headers["X-N8N-API-KEY"] = api_key
 
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
-            auth=(username, password) if username else None,
             timeout=httpx.Timeout(30.0, connect=10.0),
-            headers={"Content-Type": "application/json"},
+            headers=headers,
         )
 
     async def disconnect(self) -> None:
@@ -169,10 +171,9 @@ class N8NConnector:
     async def execute(self, action: str, params: dict[str, Any]) -> ConnectorResult:
         """Execute an N8N connector action."""
         if not self._client:
-            return ConnectorResult(
-                success=False,
-                error="N8N connector not connected",
-                error_code=ConnectorErrorCode.NOT_CONNECTED,
+            return self.error(
+                "N8N connector not connected",
+                ConnectorErrorCode.NOT_CONNECTED,
             )
 
         handler = {
@@ -187,34 +188,27 @@ class N8NConnector:
         }.get(action)
 
         if not handler:
-            return ConnectorResult(
-                success=False,
-                error=f"Unknown action: {action}",
-                error_code=ConnectorErrorCode.INVALID_ACTION,
+            return self.error(
+                f"Unknown action: {action}",
+                ConnectorErrorCode.INVALID_ACTION,
             )
 
         try:
             return await handler(params)
         except httpx.HTTPStatusError as e:
             logger.error(f"N8N API error: {e.response.status_code} - {e.response.text}")
-            return ConnectorResult(
-                success=False,
-                error=f"N8N API error: {e.response.status_code}",
-                error_code=ConnectorErrorCode.EXTERNAL_API_ERROR,
+            return self.error(
+                f"N8N API error: {e.response.status_code}",
+                ConnectorErrorCode.EXTERNAL_API_ERROR,
             )
         except httpx.ConnectError:
-            return ConnectorResult(
-                success=False,
-                error="Cannot connect to N8N",
-                error_code=ConnectorErrorCode.CONNECTION_FAILED,
+            return self.error(
+                "Cannot connect to N8N",
+                ConnectorErrorCode.CONNECTION_FAILED,
             )
         except Exception as e:
             logger.exception(f"N8N connector error: {e}")
-            return ConnectorResult(
-                success=False,
-                error=str(e),
-                error_code=ConnectorErrorCode.PROCESSING_ERROR,
-            )
+            return self.error(str(e), ConnectorErrorCode.PROCESSING_ERROR)
 
     # ------------------------------------------------------------------
     # Action handlers
@@ -225,13 +219,13 @@ class N8NConnector:
         resp.raise_for_status()
         data = resp.json()
         workflows = data.get("data", data) if isinstance(data, dict) else data
-        return ConnectorResult(success=True, data={"workflows": workflows})
+        return self.success({"workflows": workflows})
 
     async def _get_workflow(self, params: dict) -> ConnectorResult:
         wf_id = params["workflow_id"]
         resp = await self._client.get(f"/api/v1/workflows/{wf_id}")
         resp.raise_for_status()
-        return ConnectorResult(success=True, data={"workflow": resp.json()})
+        return self.success({"workflow": resp.json()})
 
     async def _create_workflow(self, params: dict) -> ConnectorResult:
         workflow_json = params["workflow_json"]
@@ -239,7 +233,7 @@ class N8NConnector:
             workflow_json = json.loads(workflow_json)
         resp = await self._client.post("/api/v1/workflows", json=workflow_json)
         resp.raise_for_status()
-        return ConnectorResult(success=True, data={"workflow": resp.json()})
+        return self.success({"workflow": resp.json()})
 
     async def _update_workflow(self, params: dict) -> ConnectorResult:
         wf_id = params["workflow_id"]
@@ -248,7 +242,7 @@ class N8NConnector:
             workflow_json = json.loads(workflow_json)
         resp = await self._client.put(f"/api/v1/workflows/{wf_id}", json=workflow_json)
         resp.raise_for_status()
-        return ConnectorResult(success=True, data={"workflow": resp.json()})
+        return self.success({"workflow": resp.json()})
 
     async def _execute_workflow(self, params: dict) -> ConnectorResult:
         wf_id = params["workflow_id"]
@@ -258,13 +252,13 @@ class N8NConnector:
             json={"data": input_data} if input_data else {},
         )
         resp.raise_for_status()
-        return ConnectorResult(success=True, data={"execution": resp.json()})
+        return self.success({"execution": resp.json()})
 
     async def _get_execution(self, params: dict) -> ConnectorResult:
         exec_id = params["execution_id"]
         resp = await self._client.get(f"/api/v1/executions/{exec_id}")
         resp.raise_for_status()
-        return ConnectorResult(success=True, data={"execution": resp.json()})
+        return self.success({"execution": resp.json()})
 
     async def _activate_workflow(self, params: dict) -> ConnectorResult:
         wf_id = params["workflow_id"]
@@ -274,10 +268,10 @@ class N8NConnector:
             json={"active": active},
         )
         resp.raise_for_status()
-        return ConnectorResult(success=True, data={"workflow": resp.json()})
+        return self.success({"workflow": resp.json()})
 
     async def _delete_workflow(self, params: dict) -> ConnectorResult:
         wf_id = params["workflow_id"]
         resp = await self._client.delete(f"/api/v1/workflows/{wf_id}")
         resp.raise_for_status()
-        return ConnectorResult(success=True, data={})
+        return self.success({})
