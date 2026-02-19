@@ -64,7 +64,7 @@ const AnalysisView: React.FC<Props> = ({
           <strong style={{ fontSize: 14 }}>Comparaison Ancien AO ↔ Nouvel AO</strong>
           <p style={{ fontSize: 12, margin: '4px 0 0', color: '#555' }}>
             {comparison
-              ? `Dernière comparaison : ${new Date(comparison.analyzedAt || comparison.comparedAt).toLocaleDateString('fr-FR')}`
+              ? `Dernière comparaison : ${new Date(comparison.analyzedAt || comparison.comparedAt || '').toLocaleDateString('fr-FR')}`
               : 'Lancez la comparaison pour identifier les écarts entre les deux appels d\'offres.'}
           </p>
         </div>
