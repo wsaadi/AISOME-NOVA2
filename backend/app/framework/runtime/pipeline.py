@@ -142,22 +142,26 @@ class ExecutionPipeline:
                         metadata=response.metadata,
                     )
 
-            # 6. Log consommation
+            # 6. Log consommation (auto-capture from LLM service)
             execution_time = int((time.time() - start_time) * 1000)
-            if self._consumption:
+            usage = getattr(context.llm, "total_usage", None) or {}
+            tokens_in = usage.get("tokens_in", 0) or response.metadata.get("tokens_in", 0)
+            tokens_out = usage.get("tokens_out", 0) or response.metadata.get("tokens_out", 0)
+
+            if self._consumption and (tokens_in > 0 or tokens_out > 0):
                 await self._log_consumption(
                     user=user,
                     agent_slug=agent.manifest.slug,
-                    tokens_in=response.metadata.get("tokens_in", 0),
-                    tokens_out=response.metadata.get("tokens_out", 0),
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
                 )
 
             return PipelineResult(
                 success=True,
                 response=response,
                 execution_time_ms=execution_time,
-                tokens_in=response.metadata.get("tokens_in", 0),
-                tokens_out=response.metadata.get("tokens_out", 0),
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
             )
 
         except Exception as e:
@@ -246,12 +250,26 @@ class ExecutionPipeline:
                     )
                     return
 
-            # 6. Log consommation
+            # 6. Log consommation (auto-capture from LLM service)
             execution_time = int((time.time() - start_time) * 1000)
+            usage = getattr(context.llm, "total_usage", None) or {}
+            tokens_in = usage.get("tokens_in", 0)
+            tokens_out = usage.get("tokens_out", 0)
+
+            if self._consumption and (tokens_in > 0 or tokens_out > 0):
+                await self._log_consumption(
+                    user=user,
+                    agent_slug=agent.manifest.slug,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                )
+
             yield PipelineResult(
                 success=True,
                 response=AgentResponse(content=full_content),
                 execution_time_ms=execution_time,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
             )
 
         except Exception as e:
