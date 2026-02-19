@@ -62,6 +62,7 @@ class TenderAssistantAgent(BaseAgent):
             "delete_document": self._handle_delete_document,
             "update_document_meta": self._handle_update_document_meta,
             "analyze_document": self._handle_analyze_document,
+            "analyze_all_documents": self._handle_analyze_all_documents,
             "compare_tenders": self._handle_compare_tenders,
             "generate_structure": self._handle_generate_structure,
             "update_structure": self._handle_update_structure,
@@ -326,6 +327,76 @@ IMPORTANT : Inclus un bloc JSON structuré avec les données parsées (type docu
         return AgentResponse(
             content=analysis,
             metadata={"type": "document_analysis", "documentId": doc_id, "fileName": doc["fileName"]}
+        )
+
+    async def _handle_analyze_all_documents(
+        self, message: UserMessage, context: AgentContext, system_prompt: str
+    ) -> AgentResponse:
+        docs = await self._get_documents_meta(context)
+        unanalyzed = [d for d in docs if not d.get("analyzed")]
+
+        if not unanalyzed:
+            return AgentResponse(
+                content="Tous les documents ont déjà été analysés.",
+                metadata={"type": "all_documents_analyzed"}
+            )
+
+        total = len(unanalyzed)
+        analyses = await self._get_analyses(context)
+        results = []
+
+        for i, doc in enumerate(unanalyzed):
+            pct = int(10 + (80 * i / total))
+            context.set_progress(pct, f"Analyse de {doc['fileName']} ({i+1}/{total})...")
+
+            # Load document text
+            text = ""
+            if doc.get("textKey"):
+                raw = await context.storage.get(doc["textKey"])
+                if raw:
+                    text = raw.decode("utf-8")
+            if not text:
+                text = await self._extract_document_text(context, doc["fileKey"], doc["fileName"])
+
+            analysis_prompt = f"""Analyse en détail le document suivant provenant d'un appel d'offres.
+
+Document : {doc['fileName']}
+Catégorie : {doc['category']}
+
+CONTENU DU DOCUMENT :
+{text[:15000]}
+
+{"[Document tronqué - " + str(len(text)) + " caractères au total]" if len(text) > 15000 else ""}
+
+Fournis une analyse structurée complète en suivant ta méthodologie d'analyse.
+IMPORTANT : Inclus un bloc JSON structuré avec les données parsées (type document_analysis) en plus de ton analyse textuelle."""
+
+            analysis = await context.llm.chat(
+                prompt=analysis_prompt,
+                system_prompt=system_prompt,
+                temperature=0.3,
+                max_tokens=4096,
+            )
+
+            analyses[doc["id"]] = {
+                "documentId": doc["id"],
+                "fileName": doc["fileName"],
+                "category": doc["category"],
+                "content": analysis,
+                "analyzedAt": datetime.now().isoformat(),
+            }
+
+            doc["analyzed"] = True
+            results.append(doc["fileName"])
+
+        await self._save_analyses(context, analyses)
+        await self._save_documents_meta(context, docs)
+
+        context.set_progress(100, f"{total} documents analysés")
+
+        return AgentResponse(
+            content=f"**{total} documents analysés** : {', '.join(results)}",
+            metadata={"type": "all_documents_analyzed", "analyzedDocIds": [d["id"] for d in unanalyzed]}
         )
 
     async def _handle_compare_tenders(
@@ -1000,7 +1071,7 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
             "documents": docs,
             "chapters": chapters,
             "improvements": improvements,
-            "analyses": {k: {"fileName": v.get("fileName", k), "analyzedAt": v.get("analyzedAt", "")} for k, v in analyses.items()},
+            "analyses": analyses,
         }
 
         return AgentResponse(
