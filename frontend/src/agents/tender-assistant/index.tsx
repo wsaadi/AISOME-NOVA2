@@ -10,6 +10,7 @@ import ResponseEditor from './components/ResponseEditor';
 import ComplianceChecker from './components/ComplianceChecker';
 import ExportPanel from './components/ExportPanel';
 import ImprovementsPanel from './components/ImprovementsPanel';
+import WorkspaceSelector from './components/WorkspaceSelector';
 
 // =============================================================================
 // Types
@@ -33,15 +34,55 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 // =============================================================================
+// Workspace gate — shown before the main agent view
+// =============================================================================
+
+const TenderAssistantGate: React.FC<AgentViewProps> = (props) => {
+  const storageKey = `workspace_${props.agent.slug}`;
+  const [workspaceId, setWorkspaceId] = useState<string | null>(() =>
+    localStorage.getItem(storageKey)
+  );
+
+  const handleSelect = (id: string) => {
+    localStorage.setItem(storageKey, id);
+    setWorkspaceId(id);
+  };
+
+  const handleChangeWorkspace = () => {
+    localStorage.removeItem(storageKey);
+    setWorkspaceId(null);
+  };
+
+  if (!workspaceId) {
+    return <WorkspaceSelector agentSlug={props.agent.slug} onSelect={handleSelect} />;
+  }
+
+  return (
+    <TenderAssistantView
+      {...props}
+      workspaceId={workspaceId}
+      onChangeWorkspace={handleChangeWorkspace}
+    />
+  );
+};
+
+// =============================================================================
 // Main Component
 // =============================================================================
 
-const TenderAssistantView: React.FC<AgentViewProps> = ({ agent, sessionId }) => {
+interface TenderAssistantInternalProps extends AgentViewProps {
+  workspaceId: string;
+  onChangeWorkspace: () => void;
+}
+
+const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
+  agent, sessionId, workspaceId, onChangeWorkspace,
+}) => {
   const {
     sendMessage, messages, isLoading, streamingContent,
     progress, progressMessage,
-  } = useAgent(agent.slug, sessionId);
-  const storage = useAgentStorage(agent.slug);
+  } = useAgent(agent.slug, sessionId, { workspaceId });
+  const storage = useAgentStorage(agent.slug, { workspaceId });
 
   // -- State --
   const [activeView, setActiveView] = useState<ViewId>('documents');
@@ -328,7 +369,22 @@ const TenderAssistantView: React.FC<AgentViewProps> = ({ agent, sessionId }) => 
         </div>
 
         <div style={styles.sidebarFooter}>
-          {documents.length} docs · {chapters.length} chapitres
+          <div>{documents.length} docs · {chapters.length} chapitres</div>
+          <button
+            onClick={onChangeWorkspace}
+            style={{
+              marginTop: 6,
+              fontSize: 10,
+              color: '#1976d2',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            Changer d'espace de travail
+          </button>
         </div>
       </div>
 
@@ -476,4 +532,4 @@ function updateChapterContent(chapters: any[], chapterId: string, content: strin
   });
 }
 
-export default TenderAssistantView;
+export default TenderAssistantGate;

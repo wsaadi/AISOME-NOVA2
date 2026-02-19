@@ -1,13 +1,20 @@
 """
-Agent Storage — Stockage MinIO cloisonné automatiquement par user × agent.
+Agent Storage — Stockage MinIO cloisonné automatiquement.
+
+Deux modes de cloisonnement:
+  - Par utilisateur × agent : users/{user_id}/agents/{agent_slug}/
+  - Par workspace × agent  : workspaces/{workspace_id}/agents/{agent_slug}/
 
 Namespace MinIO:
     nova2-storage/
     ├── users/{user_id}/agents/{agent_slug}/
     │   ├── uploads/          ← fichiers uploadés par l'utilisateur
     │   ├── outputs/          ← fichiers générés par l'agent
-    │   ├── sessions/{sid}/   ← données de session
     │   └── data/             ← données persistantes
+    ├── workspaces/{workspace_id}/agents/{agent_slug}/
+    │   ├── uploads/          ← fichiers partagés dans le workspace
+    │   ├── project/          ← état du projet collaboratif
+    │   └── exports/          ← fichiers exportés
     └── platform/
         ├── agents/           ← packages agents (exports)
         └── shared/           ← ressources partagées
@@ -16,7 +23,7 @@ L'agent ne connaît JAMAIS le chemin réel. Il écrit juste:
     await context.storage.put("outputs/report.pdf", data)
 
 Le framework traduit automatiquement en:
-    users/{user_id}/agents/{agent_slug}/outputs/report.pdf
+    workspaces/{workspace_id}/agents/{agent_slug}/outputs/report.pdf
 """
 
 from __future__ import annotations
@@ -61,22 +68,35 @@ class AgentStorageManager:
             self._client.make_bucket(self._bucket)
             logger.info(f"MinIO bucket created: {self._bucket}")
 
-    def scoped(self, user_id: int, agent_slug: str) -> ScopedAgentStorage:
+    def scoped(
+        self,
+        user_id: int,
+        agent_slug: str,
+        workspace_id: Optional[str] = None,
+    ) -> ScopedAgentStorage:
         """
-        Retourne une instance de stockage scopée pour un user × agent.
+        Retourne une instance de stockage scopée.
+
+        Si workspace_id est fourni, le stockage est partagé au niveau
+        du workspace (collaboratif). Sinon, il est isolé par utilisateur.
 
         Args:
             user_id: ID de l'utilisateur
             agent_slug: Slug de l'agent
+            workspace_id: ID du workspace (optionnel, pour le mode collaboratif)
 
         Returns:
-            ScopedAgentStorage avec accès limité au namespace de cet user/agent
+            ScopedAgentStorage avec accès limité au namespace approprié
         """
+        if workspace_id:
+            prefix = f"workspaces/{workspace_id}/agents/{agent_slug}/"
+        else:
+            prefix = f"users/{user_id}/agents/{agent_slug}/"
+
         return ScopedAgentStorage(
             client=self._client,
             bucket=self._bucket,
-            user_id=user_id,
-            agent_slug=agent_slug,
+            prefix=prefix,
         )
 
     def platform_storage(self) -> PlatformStorage:
@@ -91,19 +111,20 @@ class AgentStorageManager:
 
 class ScopedAgentStorage:
     """
-    Stockage MinIO scopé à un user × agent.
+    Stockage MinIO scopé automatiquement.
 
-    Toutes les opérations sont automatiquement préfixées avec:
-    users/{user_id}/agents/{agent_slug}/
+    Toutes les opérations sont préfixées avec le namespace approprié:
+    - users/{user_id}/agents/{agent_slug}/     (mode individuel)
+    - workspaces/{workspace_id}/agents/{slug}/ (mode collaboratif)
 
-    L'agent ne peut PAS accéder aux données d'un autre user ou agent.
+    L'agent ne peut PAS accéder aux données hors de son scope.
     Les chemins avec '..' ou '/' en début sont rejetés.
     """
 
-    def __init__(self, client: Minio, bucket: str, user_id: int, agent_slug: str):
+    def __init__(self, client: Minio, bucket: str, prefix: str):
         self._client = client
         self._bucket = bucket
-        self._prefix = f"users/{user_id}/agents/{agent_slug}/"
+        self._prefix = prefix
 
     def _resolve_key(self, key: str) -> str:
         """

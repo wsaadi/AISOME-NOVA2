@@ -102,6 +102,7 @@ def execute_agent_task(
     message_content: str,
     message_attachments: list | None = None,
     message_metadata: dict | None = None,
+    workspace_id: str | None = None,
 ):
     """
     Tâche Celery : exécute un agent de manière asynchrone.
@@ -114,6 +115,7 @@ def execute_agent_task(
         message_content: Contenu du message utilisateur
         message_attachments: Pièces jointes
         message_metadata: Métadonnées
+        workspace_id: ID du workspace (optionnel)
     """
     publish_progress(job_id, 0, "Démarrage de l'agent...")
 
@@ -128,6 +130,7 @@ def execute_agent_task(
                 message_content=message_content,
                 message_attachments=message_attachments or [],
                 message_metadata=message_metadata or {},
+                workspace_id=workspace_id,
             )
         )
 
@@ -150,6 +153,7 @@ def execute_agent_stream_task(
     message_content: str,
     message_attachments: list | None = None,
     message_metadata: dict | None = None,
+    workspace_id: str | None = None,
 ):
     """
     Tâche Celery : exécute un agent en mode streaming.
@@ -168,6 +172,7 @@ def execute_agent_stream_task(
                 message_content=message_content,
                 message_attachments=message_attachments or [],
                 message_metadata=message_metadata or {},
+                workspace_id=workspace_id,
             )
         )
 
@@ -188,6 +193,7 @@ async def _run_agent(
     message_content: str,
     message_attachments: list,
     message_metadata: dict,
+    workspace_id: str | None = None,
 ) -> dict:
     """Exécute l'agent via le moteur framework."""
     from app.database import async_session
@@ -216,6 +222,22 @@ async def _run_agent(
         except Exception:
             logger.warning("VaultService unavailable in worker")
 
+        # Create storage manager so agents have access to MinIO
+        storage_manager = None
+        try:
+            from app.config import get_settings
+            from app.framework.storage.agent_storage import AgentStorageManager
+            settings = get_settings()
+            storage_manager = AgentStorageManager(
+                endpoint=settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                bucket=settings.MINIO_STORAGE_BUCKET,
+                secure=settings.MINIO_SECURE,
+            )
+        except Exception as e:
+            logger.warning(f"Storage unavailable in worker: {e}")
+
         engine = AgentEngine(
             db_session=db,
             tool_registry=tool_registry,
@@ -223,6 +245,7 @@ async def _run_agent(
             session_manager=session_manager,
             consumption_service=consumption_service,
             vault_service=vault_service,
+            storage_service=storage_manager,
         )
         engine.discover_agents()
 
@@ -243,6 +266,7 @@ async def _run_agent(
             message=message,
             user=SimpleUser(user_id),
             session_id=session_id,
+            workspace_id=workspace_id,
         )
 
         publish_progress(job_id, 90, "Finalisation...")
@@ -271,6 +295,7 @@ async def _run_agent_stream(
     message_content: str,
     message_attachments: list,
     message_metadata: dict,
+    workspace_id: str | None = None,
 ) -> dict:
     """Exécute l'agent en mode streaming via le moteur framework."""
     from app.database import async_session
@@ -298,6 +323,22 @@ async def _run_agent_stream(
         except Exception:
             logger.warning("VaultService unavailable in worker")
 
+        # Create storage manager so agents have access to MinIO
+        storage_manager = None
+        try:
+            from app.config import get_settings
+            from app.framework.storage.agent_storage import AgentStorageManager
+            settings = get_settings()
+            storage_manager = AgentStorageManager(
+                endpoint=settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                bucket=settings.MINIO_STORAGE_BUCKET,
+                secure=settings.MINIO_SECURE,
+            )
+        except Exception as e:
+            logger.warning(f"Storage unavailable in worker: {e}")
+
         engine = AgentEngine(
             db_session=db,
             tool_registry=tool_registry,
@@ -305,6 +346,7 @@ async def _run_agent_stream(
             session_manager=session_manager,
             consumption_service=consumption_service,
             vault_service=vault_service,
+            storage_service=storage_manager,
         )
         engine.discover_agents()
 
@@ -328,7 +370,9 @@ async def _run_agent_stream(
             content=message_content,
         )
 
-        context = await engine.build_context(agent_slug, user_id, session_id)
+        context = await engine.build_context(
+            agent_slug, user_id, session_id, workspace_id=workspace_id
+        )
         message = UserMessage(content=message_content, metadata=message_metadata)
 
         full_content = ""

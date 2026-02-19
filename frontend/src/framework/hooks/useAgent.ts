@@ -4,14 +4,15 @@
  * Gère:
  * - Envoi de messages (async ou sync)
  * - Réception des réponses et streaming
- * - Historique de conversation
+ * - Historique de conversation (auto-restauré depuis le backend)
  * - État de chargement et progression
+ * - Workspace collaboratif (optionnel)
  *
  * Usage dans un composant agent:
  *   const { sendMessage, messages, isLoading, streamingContent } = useAgent('mon-agent', sessionId);
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatMessage, JobInfo, StreamChunk } from 'framework/types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
@@ -19,6 +20,8 @@ const API_BASE = process.env.REACT_APP_API_URL || '';
 interface UseAgentOptions {
   /** Mode synchrone (attend la réponse) ou async (job en background) */
   mode?: 'sync' | 'async';
+  /** ID du workspace (mode collaboratif) */
+  workspaceId?: string | null;
 }
 
 interface UseAgentReturn {
@@ -40,6 +43,8 @@ interface UseAgentReturn {
   clearMessages: () => void;
   /** Charger une session existante */
   loadSession: (sessionId: string) => Promise<void>;
+  /** Session restaurée depuis le backend */
+  sessionRestored: boolean;
 }
 
 export function useAgent(
@@ -47,7 +52,7 @@ export function useAgent(
   sessionId: string,
   options: UseAgentOptions = {}
 ): UseAgentReturn {
-  const { mode = 'sync' } = options;
+  const { mode = 'sync', workspaceId } = options;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,6 +60,8 @@ export function useAgent(
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [sessionRestored, setSessionRestored] = useState(false);
+  const restoreAttempted = useRef(false);
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('access_token');
@@ -63,6 +70,35 @@ export function useAgent(
       Authorization: `Bearer ${token}`,
     };
   };
+
+  // Auto-restore session messages from backend on mount
+  useEffect(() => {
+    if (!sessionId || restoreAttempted.current) return;
+    restoreAttempted.current = true;
+
+    const restore = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/agent-runtime/sessions/${sessionId}`,
+          { headers: getAuthHeaders() }
+        );
+
+        if (response.ok) {
+          const session = await response.json();
+          if (session.messages && session.messages.length > 0) {
+            setMessages(session.messages);
+          }
+        }
+        // 404 = new session, that's fine
+      } catch {
+        // Silently fail — new session
+      } finally {
+        setSessionRestored(true);
+      }
+    };
+
+    restore();
+  }, [sessionId]);
 
   const sendMessage = useCallback(
     async (content: string, metadata?: Record<string, unknown>) => {
@@ -93,6 +129,7 @@ export function useAgent(
                 message: content,
                 session_id: sessionId,
                 metadata: metadata || {},
+                workspace_id: workspaceId || undefined,
               }),
             }
           );
@@ -124,6 +161,7 @@ export function useAgent(
                 session_id: sessionId,
                 metadata: metadata || {},
                 stream: true,
+                workspace_id: workspaceId || undefined,
               }),
             }
           );
@@ -143,7 +181,7 @@ export function useAgent(
         setProgress(0);
       }
     },
-    [agentSlug, sessionId, mode]
+    [agentSlug, sessionId, mode, workspaceId]
   );
 
   const pollJob = async (jobId: string) => {
@@ -213,5 +251,6 @@ export function useAgent(
     error,
     clearMessages,
     loadSession,
+    sessionRestored,
   };
 }
