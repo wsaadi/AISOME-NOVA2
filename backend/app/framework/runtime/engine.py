@@ -176,6 +176,7 @@ class AgentEngine:
         session_id: str,
         lang: str = "en",
         workspace_id: Optional[str] = None,
+        progress_callback: Any = None,
     ) -> AgentContext:
         """
         Construit un AgentContext pour une exécution.
@@ -239,6 +240,7 @@ class AgentEngine:
             storage=storage_service,
             memory=memory_service,
             lang=lang,
+            _progress_callback=progress_callback,
         )
 
     async def execute(
@@ -289,6 +291,9 @@ class AgentEngine:
                     user_id=user.id,
                 )
 
+        # Build a progress callback that publishes to Redis
+        progress_callback = self._make_progress_callback(session_id)
+
         # Construire le contexte (avec la langue préférée de l'utilisateur)
         user_lang = getattr(user, "preferred_language", "en") or "en"
         context = await self.build_context(
@@ -297,6 +302,7 @@ class AgentEngine:
             session_id=session_id,
             lang=user_lang,
             workspace_id=workspace_id,
+            progress_callback=progress_callback,
         )
 
         # Sauvegarder le message utilisateur dans la session
@@ -351,6 +357,34 @@ class AgentEngine:
         # Les sous-agents utilisent un contexte parent simplifié
         # TODO: Implémenter le contexte d'orchestration complet
         return AgentResponse(content="", metadata={"error": "not_implemented"})
+
+    def _make_progress_callback(self, session_id: str):
+        """
+        Create a callback that publishes progress to Redis.
+
+        The callback stores progress as a JSON hash in Redis with a 5-min TTL,
+        allowing the frontend to poll for real-time progress updates.
+        """
+        def callback(percent: int, message: str):
+            try:
+                import json
+                import redis as _redis
+                from app.config import get_settings
+                settings = get_settings()
+                r = _redis.Redis(
+                    host=settings.REDIS_HOST,
+                    port=settings.REDIS_PORT,
+                    db=settings.REDIS_DB,
+                    decode_responses=True,
+                )
+                r.setex(
+                    f"agent_progress:{session_id}",
+                    300,  # 5-minute TTL
+                    json.dumps({"progress": percent, "message": message}),
+                )
+            except Exception:
+                pass
+        return callback
 
     async def _get_llm_config(self, agent_slug: str) -> dict[str, Any]:
         """
