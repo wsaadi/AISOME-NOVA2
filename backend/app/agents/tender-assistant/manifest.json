@@ -1,0 +1,20 @@
+{
+  "name": "Assistant Appel d'Offres",
+  "slug": "tender-assistant",
+  "version": "1.0.0",
+  "description": "Agent complet d'aide à la réponse aux appels d'offres : analyse comparative, rédaction assistée par IA, vérification de conformité et export DOCX professionnel",
+  "author": "",
+  "icon": "description",
+  "category": "analysis",
+  "tags": ["appel-offre", "rédaction", "analyse", "comparaison", "conformité", "export", "collaboration"],
+  "dependencies": {
+    "tools": ["pdf-crud", "word-crud", "excel-crud", "json-crud"],
+    "connectors": []
+  },
+  "triggers": [
+    {"type": "user_message", "config": {}},
+    {"type": "file_upload", "config": {"accept": [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".csv", ".txt"]}}
+  ],
+  "capabilities": ["streaming", "file_upload", "file_download"],
+  "min_platform_version": "1.0.0"
+}
