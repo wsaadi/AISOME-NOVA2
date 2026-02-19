@@ -2,7 +2,11 @@
  * useAgentStorage — Hook d'accès au stockage MinIO d'un agent.
  *
  * Fournit des méthodes pour uploader, télécharger et lister les fichiers
- * dans l'espace de stockage dédié à l'agent + utilisateur courant.
+ * dans l'espace de stockage dédié à l'agent.
+ *
+ * Supporte deux modes de stockage:
+ * - Utilisateur (par défaut): users/{user_id}/agents/{slug}/
+ * - Workspace (collaboratif): workspaces/{workspace_id}/agents/{slug}/
  */
 
 import { useCallback, useState } from 'react';
@@ -14,6 +18,11 @@ interface StorageFile {
   filename: string;
   size_bytes: number;
   content_type: string;
+}
+
+interface UseAgentStorageOptions {
+  /** ID du workspace pour le stockage collaboratif */
+  workspaceId?: string | null;
 }
 
 interface UseAgentStorageReturn {
@@ -33,7 +42,11 @@ interface UseAgentStorageReturn {
   error: string | null;
 }
 
-export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
+export function useAgentStorage(
+  agentSlug: string,
+  options: UseAgentStorageOptions = {}
+): UseAgentStorageReturn {
+  const { workspaceId } = options;
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +54,13 @@ export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
   const getAuthHeaders = () => {
     const token = localStorage.getItem('access_token');
     return { Authorization: `Bearer ${token}` };
+  };
+
+  /** Append workspace_id query param if present */
+  const wsParam = (existing: string) => {
+    if (!workspaceId) return existing;
+    const sep = existing.includes('?') ? '&' : '?';
+    return `${existing}${sep}workspace_id=${encodeURIComponent(workspaceId)}`;
   };
 
   const upload = useCallback(
@@ -54,14 +74,14 @@ export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
         formData.append('file', file);
         if (path) formData.append('path', path);
 
-        const response = await fetch(
-          `${API_BASE}/api/agent-runtime/${agentSlug}/storage/upload`,
-          {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: formData,
-          }
-        );
+        let url = `${API_BASE}/api/agent-runtime/${agentSlug}/storage/upload`;
+        if (workspaceId) url += `?workspace_id=${encodeURIComponent(workspaceId)}`;
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: formData,
+        });
 
         if (!response.ok) throw new Error('Erreur d\'upload');
 
@@ -76,34 +96,34 @@ export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
         setIsUploading(false);
       }
     },
-    [agentSlug]
+    [agentSlug, workspaceId]
   );
 
   const download = useCallback(
     async (key: string): Promise<Blob> => {
-      const response = await fetch(
-        `${API_BASE}/api/agent-runtime/${agentSlug}/storage/download?key=${encodeURIComponent(key)}`,
-        { headers: getAuthHeaders() }
-      );
+      let url = `${API_BASE}/api/agent-runtime/${agentSlug}/storage/download?key=${encodeURIComponent(key)}`;
+      url = wsParam(url);
 
+      const response = await fetch(url, { headers: getAuthHeaders() });
       if (!response.ok) throw new Error('Fichier introuvable');
       return response.blob();
     },
-    [agentSlug]
+    [agentSlug, workspaceId]
   );
 
   const listFiles = useCallback(
     async (prefix?: string): Promise<StorageFile[]> => {
-      const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
-      const response = await fetch(
-        `${API_BASE}/api/agent-runtime/${agentSlug}/storage/list${params}`,
-        { headers: getAuthHeaders() }
-      );
+      let url = `${API_BASE}/api/agent-runtime/${agentSlug}/storage/list`;
+      const params: string[] = [];
+      if (prefix) params.push(`prefix=${encodeURIComponent(prefix)}`);
+      if (workspaceId) params.push(`workspace_id=${encodeURIComponent(workspaceId)}`);
+      if (params.length) url += `?${params.join('&')}`;
 
+      const response = await fetch(url, { headers: getAuthHeaders() });
       if (!response.ok) throw new Error('Erreur de listing');
       return response.json();
     },
-    [agentSlug]
+    [agentSlug, workspaceId]
   );
 
   const deleteFile = useCallback(
@@ -113,13 +133,13 @@ export function useAgentStorage(agentSlug: string): UseAgentStorageReturn {
         {
           method: 'DELETE',
           headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key }),
+          body: JSON.stringify({ key, workspace_id: workspaceId || undefined }),
         }
       );
 
       return response.ok;
     },
-    [agentSlug]
+    [agentSlug, workspaceId]
   );
 
   return { upload, download, listFiles, deleteFile, isUploading, uploadProgress, error };

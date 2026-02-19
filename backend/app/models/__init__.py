@@ -8,6 +8,7 @@ from app.models.agent import Agent, AgentPermission
 from app.models.moderation import ModerationRule
 from app.models.agent_llm_config import AgentLLMConfig
 from app.models.agent_session import AgentSession, AgentSessionMessage
+from app.models.workspace import Workspace, WorkspaceMember
 
 __all__ = [
     "User", "UserRole", "Role",
@@ -16,4 +17,5 @@ __all__ = [
     "Agent", "AgentPermission", "ModerationRule",
     "AgentLLMConfig",
     "AgentSession", "AgentSessionMessage",
+    "Workspace", "WorkspaceMember",
 ]

@@ -37,15 +37,16 @@ const generateSessionId = (slug: string): string => {
 };
 
 /**
- * Get or create a session ID from sessionStorage.
- * Persists across page reloads but not across tabs.
+ * Get or create a session ID from localStorage.
+ * Persists across page reloads, tab switches, and navigation.
+ * This ensures agent state is not lost when the user navigates away.
  */
 const getSessionId = (slug: string): string => {
   const key = `agent_session_${slug}`;
-  let sessionId = sessionStorage.getItem(key);
+  let sessionId = localStorage.getItem(key);
   if (!sessionId) {
     sessionId = generateSessionId(slug);
-    sessionStorage.setItem(key, sessionId);
+    localStorage.setItem(key, sessionId);
   }
   return sessionId;
 };

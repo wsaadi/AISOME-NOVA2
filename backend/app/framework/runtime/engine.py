@@ -175,6 +175,7 @@ class AgentEngine:
         user_id: int,
         session_id: str,
         lang: str = "en",
+        workspace_id: Optional[str] = None,
     ) -> AgentContext:
         """
         Construit un AgentContext pour une exécution.
@@ -187,6 +188,7 @@ class AgentEngine:
             user_id: ID de l'utilisateur
             session_id: ID de la session
             lang: Langue préférée de l'utilisateur (en, fr, es)
+            workspace_id: ID du workspace (optionnel, pour le mode collaboratif)
 
         Returns:
             AgentContext prêt à l'emploi
@@ -205,11 +207,15 @@ class AgentEngine:
         agent_service = AgentService(self)
         memory_service = MemoryService(session_id, self._session_manager)
 
-        # Stockage scopé au user × agent
+        # Stockage scopé: workspace si fourni, sinon user × agent
         storage_service = None
         if self._storage:
             storage_service = StorageService(
-                self._storage.scoped(user_id=user_id, agent_slug=agent_slug)
+                self._storage.scoped(
+                    user_id=user_id,
+                    agent_slug=agent_slug,
+                    workspace_id=workspace_id,
+                )
             )
 
         # ToolService reçoit les services pour construire un ToolContext
@@ -241,6 +247,7 @@ class AgentEngine:
         message: UserMessage,
         user: Any,
         session_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> PipelineResult:
         """
         Exécute un agent avec un message utilisateur.
@@ -252,6 +259,7 @@ class AgentEngine:
             message: Message utilisateur
             user: Utilisateur courant
             session_id: ID de session (crée une nouvelle si None)
+            workspace_id: ID du workspace (optionnel)
 
         Returns:
             PipelineResult avec la réponse ou l'erreur
@@ -288,6 +296,7 @@ class AgentEngine:
             user_id=user.id,
             session_id=session_id,
             lang=user_lang,
+            workspace_id=workspace_id,
         )
 
         # Sauvegarder le message utilisateur dans la session

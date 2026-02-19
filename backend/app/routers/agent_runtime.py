@@ -46,6 +46,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="ID session (crée une nouvelle si None)")
     metadata: dict[str, Any] = Field(default_factory=dict)
     stream: bool = Field(default=False, description="Activer le streaming")
+    workspace_id: Optional[str] = Field(None, description="ID workspace (mode collaboratif)")
 
 
 class ChatResponse(BaseModel):
@@ -390,6 +391,7 @@ async def chat_async(
             session_id=session_id,
             message_content=request.message,
             message_metadata=request.metadata,
+            workspace_id=request.workspace_id,
         )
 
         return ChatResponse(
@@ -475,6 +477,7 @@ async def chat_sync(
                 message=message,
                 user=current_user,
                 session_id=session_id,
+                workspace_id=request.workspace_id,
             )
 
             if not result.success:
@@ -531,8 +534,8 @@ async def list_sessions(
 # =============================================================================
 
 
-def _get_scoped_storage(slug: str, user_id: int):
-    """Create a ScopedAgentStorage for user × agent."""
+def _get_scoped_storage(slug: str, user_id: int, workspace_id: Optional[str] = None):
+    """Create a ScopedAgentStorage for user × agent or workspace × agent."""
     from app.config import get_settings
     from app.framework.storage.agent_storage import AgentStorageManager
 
@@ -544,7 +547,7 @@ def _get_scoped_storage(slug: str, user_id: int):
         bucket=settings.MINIO_STORAGE_BUCKET,
         secure=settings.MINIO_SECURE,
     )
-    return manager.scoped(user_id=user_id, agent_slug=slug)
+    return manager.scoped(user_id=user_id, agent_slug=slug, workspace_id=workspace_id)
 
 
 @router.post("/{slug}/storage/upload")
@@ -552,10 +555,11 @@ async def storage_upload(
     slug: str,
     file: UploadFile = FastAPIFile(...),
     path: Optional[str] = None,
+    workspace_id: Optional[str] = None,
     current_user=Depends(get_current_user),
 ):
     """Upload un fichier dans le stockage de l'agent."""
-    storage = _get_scoped_storage(slug, current_user.id)
+    storage = _get_scoped_storage(slug, current_user.id, workspace_id)
 
     content = await file.read()
     prefix = path.rstrip("/") + "/" if path else "uploads/"
@@ -570,12 +574,13 @@ async def storage_upload(
 async def storage_download(
     slug: str,
     key: str,
+    workspace_id: Optional[str] = None,
     current_user=Depends(get_current_user),
 ):
     """Télécharge un fichier depuis le stockage de l'agent."""
     from fastapi.responses import Response
 
-    storage = _get_scoped_storage(slug, current_user.id)
+    storage = _get_scoped_storage(slug, current_user.id, workspace_id)
     data = await storage.get(key)
 
     if data is None:
@@ -593,10 +598,11 @@ async def storage_download(
 async def storage_list(
     slug: str,
     prefix: Optional[str] = None,
+    workspace_id: Optional[str] = None,
     current_user=Depends(get_current_user),
 ):
     """Liste les fichiers dans le stockage de l'agent."""
-    storage = _get_scoped_storage(slug, current_user.id)
+    storage = _get_scoped_storage(slug, current_user.id, workspace_id)
     keys = await storage.list(prefix or "")
 
     files = []
@@ -621,7 +627,8 @@ async def storage_delete(
     if not key:
         raise HTTPException(status_code=400, detail="Clé manquante")
 
-    storage = _get_scoped_storage(slug, current_user.id)
+    workspace_id = body.get("workspace_id")
+    storage = _get_scoped_storage(slug, current_user.id, workspace_id)
     deleted = await storage.delete(key)
 
     if not deleted:
