@@ -70,29 +70,30 @@ const TenderAssistantView: React.FC<AgentViewProps> = ({ agent, sessionId }) => 
   useEffect(() => {
     for (const msg of messages) {
       if (msg.role !== 'assistant' || !msg.metadata) continue;
-      const { type, state } = msg.metadata;
+      const meta = msg.metadata as Record<string, any>;
+      const { type } = meta;
 
       switch (type) {
         case 'project_state':
-          if (state) {
-            setDocuments(state.documents || []);
-            setChapters(state.chapters || []);
-            setImprovements(state.improvements || []);
-            setAnalyses(state.analyses || {});
+          if (meta.state) {
+            setDocuments(meta.state.documents || []);
+            setChapters(meta.state.chapters || []);
+            setImprovements(meta.state.improvements || []);
+            setAnalyses(meta.state.analyses || {});
           }
           break;
 
         case 'document_uploaded':
-          if (msg.metadata.document) {
+          if (meta.document) {
             setDocuments(prev => {
-              const exists = prev.some(d => d.id === msg.metadata.document.id);
-              return exists ? prev : [...prev, msg.metadata.document];
+              const exists = prev.some((d: any) => d.id === meta.document.id);
+              return exists ? prev : [...prev, meta.document];
             });
           }
           break;
 
         case 'document_deleted':
-          setDocuments(prev => prev.filter(d => d.id !== msg.metadata.documentId));
+          setDocuments(prev => prev.filter((d: any) => d.id !== meta.documentId));
           break;
 
         case 'document_updated':
@@ -102,14 +103,14 @@ const TenderAssistantView: React.FC<AgentViewProps> = ({ agent, sessionId }) => 
         case 'document_analysis':
           setAnalyses(prev => ({
             ...prev,
-            [msg.metadata.documentId]: {
-              fileName: msg.metadata.fileName,
+            [meta.documentId]: {
+              fileName: meta.fileName,
               content: msg.content,
               analyzedAt: new Date().toISOString(),
             },
           }));
-          setDocuments(prev => prev.map(d =>
-            d.id === msg.metadata.documentId ? { ...d, analyzed: true } : d
+          setDocuments(prev => prev.map((d: any) =>
+            d.id === meta.documentId ? { ...d, analyzed: true } : d
           ));
           break;
 
@@ -124,22 +125,22 @@ const TenderAssistantView: React.FC<AgentViewProps> = ({ agent, sessionId }) => 
           break;
 
         case 'structure_generated':
-          if (msg.metadata.chapters && msg.metadata.chapters.length > 0) {
-            setChapters(msg.metadata.chapters);
+          if (meta.chapters && meta.chapters.length > 0) {
+            setChapters(meta.chapters);
           }
           break;
 
         case 'structure_updated':
-          if (msg.metadata.chapters) {
-            setChapters(msg.metadata.chapters);
+          if (meta.chapters) {
+            setChapters(meta.chapters);
           }
           break;
 
         case 'chapter_written':
         case 'chapter_improved':
           // Update chapter content from the message
-          if (msg.metadata.chapterId) {
-            setChapters(prev => updateChapterContent(prev, msg.metadata.chapterId, msg.content));
+          if (meta.chapterId) {
+            setChapters(prev => updateChapterContent(prev, meta.chapterId, msg.content));
           }
           break;
 
@@ -148,26 +149,26 @@ const TenderAssistantView: React.FC<AgentViewProps> = ({ agent, sessionId }) => 
           break;
 
         case 'improvement_added':
-          if (msg.metadata.improvement) {
+          if (meta.improvement) {
             setImprovements(prev => {
-              const exists = prev.some(i => i.id === msg.metadata.improvement.id);
-              return exists ? prev : [...prev, msg.metadata.improvement];
+              const exists = prev.some((i: any) => i.id === meta.improvement.id);
+              return exists ? prev : [...prev, meta.improvement];
             });
           }
           break;
 
         case 'improvement_deleted':
-          setImprovements(prev => prev.filter(i => i.id !== msg.metadata.improvementId));
+          setImprovements(prev => prev.filter((i: any) => i.id !== meta.improvementId));
           break;
 
         case 'export_complete':
-          setLastExportKey(msg.metadata.fileKey);
-          setLastExportName(msg.metadata.fileName);
+          setLastExportKey(meta.fileKey);
+          setLastExportName(meta.fileName);
           break;
 
         case 'template_uploaded':
-          setTemplateKey(msg.metadata.templateKey);
-          setTemplateName(msg.metadata.fileName);
+          setTemplateKey(meta.templateKey);
+          setTemplateName(meta.fileName);
           break;
       }
     }
