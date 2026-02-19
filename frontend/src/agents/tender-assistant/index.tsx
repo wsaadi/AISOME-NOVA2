@@ -64,7 +64,7 @@ const TenderAssistantView: React.FC<AgentViewProps> = ({ agent, sessionId }) => 
         setStateLoaded(true);
       });
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // -- Process messages to update state --
   useEffect(() => {
