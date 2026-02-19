@@ -80,7 +80,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
 }) => {
   const {
     sendMessage, messages, isLoading, streamingContent,
-    progress, progressMessage,
+    progress, progressMessage, sessionRestored,
   } = useAgent(agent.slug, sessionId, { workspaceId });
   const storage = useAgentStorage(agent.slug, { workspaceId });
 
@@ -98,14 +98,14 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
   const [lastExportName, setLastExportName] = useState<string | null>(null);
   const [stateLoaded, setStateLoaded] = useState(false);
 
-  // -- Load initial state --
+  // -- Load initial state (wait for session restore first) --
   useEffect(() => {
-    if (!stateLoaded) {
+    if (sessionRestored && !stateLoaded) {
       sendMessage('', { action: 'get_project_state' }).then(() => {
         setStateLoaded(true);
       });
     }
-  }, []);
+  }, [sessionRestored]);
 
   // -- Process messages to update state --
   useEffect(() => {

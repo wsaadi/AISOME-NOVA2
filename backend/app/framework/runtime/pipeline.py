@@ -270,8 +270,8 @@ class ExecutionPipeline:
 
     def _validate_input(self, message: UserMessage) -> Optional[str]:
         """Valide le message utilisateur."""
-        if not message.content and not message.attachments:
-            return "Message vide: contenu ou pièce jointe requis"
+        if not message.content and not message.attachments and not message.metadata:
+            return "Message vide: contenu, pièce jointe ou métadonnées requis"
         if len(message.content) > 100_000:
             return "Message trop long (max 100 000 caractères)"
         return None
