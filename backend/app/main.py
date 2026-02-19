@@ -60,8 +60,15 @@ async def init_db():
         try:
             await sync_connectors_to_db(session)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Connector sync on startup: {e}")
+            logger.warning(f"Connector sync on startup: {e}")
+
+    # Auto-sync framework agents to the DB
+    from app.services.agent_sync import sync_agents_to_db
+    async with async_session() as session:
+        try:
+            await sync_agents_to_db(session)
+        except Exception as e:
+            logger.warning(f"Agent sync on startup: {e}")
 
 
 @asynccontextmanager
