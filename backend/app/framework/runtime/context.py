@@ -55,6 +55,7 @@ class LLMService:
         self._api_key = api_key
         self._base_url = base_url
         self._last_usage: dict[str, int] = {"tokens_in": 0, "tokens_out": 0}
+        self._total_usage: dict[str, int] = {"tokens_in": 0, "tokens_out": 0}
 
     @property
     def provider_slug(self) -> str:
@@ -68,6 +69,16 @@ class LLMService:
     def last_usage(self) -> dict[str, int]:
         """Token usage from the last chat/stream call."""
         return dict(self._last_usage)
+
+    @property
+    def total_usage(self) -> dict[str, int]:
+        """Cumulative token usage across all calls in this context."""
+        return dict(self._total_usage)
+
+    def _accumulate_usage(self) -> None:
+        """Add last_usage to running total."""
+        self._total_usage["tokens_in"] += self._last_usage.get("tokens_in", 0)
+        self._total_usage["tokens_out"] += self._last_usage.get("tokens_out", 0)
 
     @property
     def _is_anthropic(self) -> bool:
@@ -126,6 +137,7 @@ class LLMService:
                 "tokens_in": final_message.usage.input_tokens,
                 "tokens_out": final_message.usage.output_tokens,
             }
+            self._accumulate_usage()
         except anthropic.AuthenticationError as e:
             raise ValueError(f"Anthropic authentication failed: {e}")
         except anthropic.RateLimitError as e:
@@ -172,6 +184,7 @@ class LLMService:
                     "tokens_in": final_message.usage.input_tokens,
                     "tokens_out": final_message.usage.output_tokens,
                 }
+                self._accumulate_usage()
         finally:
             await client.close()
 
@@ -224,6 +237,7 @@ class LLMService:
             "tokens_in": response.usage.prompt_tokens if response.usage else 0,
             "tokens_out": response.usage.completion_tokens if response.usage else 0,
         }
+        self._accumulate_usage()
         return response.choices[0].message.content or ""
 
     async def _stream_openai(
@@ -258,6 +272,7 @@ class LLMService:
                         "tokens_in": chunk.usage.prompt_tokens or 0,
                         "tokens_out": chunk.usage.completion_tokens or 0,
                     }
+                    self._accumulate_usage()
         finally:
             await client.close()
 
