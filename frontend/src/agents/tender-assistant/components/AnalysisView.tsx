@@ -8,6 +8,9 @@ interface AnalysisData {
   category?: string;
   content: string;
   analyzedAt: string;
+  comparedAt?: string;
+  oldDocs?: string[];
+  newDocs?: string[];
 }
 
 interface Props {
