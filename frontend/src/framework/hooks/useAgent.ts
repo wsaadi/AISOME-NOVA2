@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatMessage, JobInfo, StreamChunk } from 'framework/types';
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
+const PROGRESS_POLL_INTERVAL = 800; // ms
 
 interface UseAgentOptions {
   /** Mode synchrone (attend la réponse) ou async (job en background) */
@@ -218,6 +219,39 @@ export function useAgent(
 
     throw new Error('Timeout: le job n\'a pas terminé dans les 2 minutes');
   };
+
+  // Poll for progress while loading (works for both sync and async modes)
+  useEffect(() => {
+    if (!isLoading || !sessionId) return;
+
+    const token = localStorage.getItem('access_token');
+    const headers = { Authorization: `Bearer ${token}` };
+    let active = true;
+
+    const poll = async () => {
+      while (active) {
+        try {
+          const res = await fetch(
+            `${API_BASE}/api/agent-runtime/progress/${sessionId}`,
+            { headers }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data.progress > 0) {
+              setProgress(data.progress);
+              setProgressMessage(data.message || '');
+            }
+          }
+        } catch {
+          // ignore
+        }
+        await new Promise(r => setTimeout(r, PROGRESS_POLL_INTERVAL));
+      }
+    };
+    poll();
+
+    return () => { active = false; };
+  }, [isLoading, sessionId]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);

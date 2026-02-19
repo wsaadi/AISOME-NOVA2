@@ -579,6 +579,7 @@ class AgentContext:
     memory: Optional[MemoryService] = None
     lang: str = "en"
     _metadata: dict[str, Any] = field(default_factory=dict)
+    _progress_callback: Optional[Any] = field(default=None, repr=False)
 
     def set_progress(self, percent: int, message: str = "") -> None:
         """
@@ -588,8 +589,16 @@ class AgentContext:
             percent: Pourcentage de progression (0-100)
             message: Message de statut optionnel
         """
-        self._metadata["progress"] = max(0, min(100, percent))
+        clamped = max(0, min(100, percent))
+        self._metadata["progress"] = clamped
         self._metadata["progress_message"] = message
+
+        # Publish to Redis for real-time polling
+        if self._progress_callback:
+            try:
+                self._progress_callback(clamped, message)
+            except Exception:
+                pass
 
 
 @dataclass

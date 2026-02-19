@@ -428,6 +428,64 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           </div>
         </div>
 
+        {/* Global progress banner */}
+        {isLoading && progress > 0 && (
+          <div style={{
+            padding: '10px 20px',
+            backgroundColor: '#e3f2fd',
+            borderBottom: '1px solid #90caf9',
+            flexShrink: 0,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#1565c0' }}>
+                {progressMessage || 'Traitement en cours...'}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#1565c0' }}>
+                {progress}%
+              </span>
+            </div>
+            <div style={{
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: '#bbdefb',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                borderRadius: 3,
+                backgroundColor: '#1976d2',
+                width: `${progress}%`,
+                transition: 'width 0.4s ease',
+              }} />
+            </div>
+          </div>
+        )}
+        {isLoading && progress === 0 && (
+          <div style={{
+            padding: '8px 20px',
+            backgroundColor: '#fff8e1',
+            borderBottom: '1px solid #ffe082',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+            <span style={{
+              display: 'inline-block',
+              width: 14,
+              height: 14,
+              border: '2px solid #f9a825',
+              borderTopColor: 'transparent',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }} />
+            <span style={{ fontSize: 13, color: '#f57f17' }}>
+              {progressMessage || 'Chargement en cours...'}
+            </span>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
         <div style={activeView === 'editor' ? { ...styles.mainContent, padding: 0, display: 'flex', flex: 1, overflow: 'hidden' } : styles.mainContent}>
           {activeView === 'documents' && (
             <DocumentLibrary

@@ -208,6 +208,31 @@ async def get_job_status(
     )
 
 
+@router.get("/progress/{session_id}")
+async def get_progress(
+    session_id: str,
+    current_user=Depends(get_current_user),
+):
+    """Récupère la progression en temps réel d'une exécution d'agent."""
+    import json
+    try:
+        import redis as _redis
+        from app.config import get_settings
+        settings = get_settings()
+        r = _redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.REDIS_DB,
+            decode_responses=True,
+        )
+        data = r.get(f"agent_progress:{session_id}")
+        if data:
+            return json.loads(data)
+    except Exception:
+        pass
+    return {"progress": 0, "message": ""}
+
+
 @router.get("/sessions/{session_id}")
 async def get_session(
     session_id: str,
