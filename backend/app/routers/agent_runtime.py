@@ -224,7 +224,7 @@ async def get_session(
         if not session:
             raise HTTPException(status_code=404, detail="Session non trouvée")
 
-        if session.user_id != current_user.id:
+        if str(session.user_id) != str(current_user.id):
             raise HTTPException(status_code=403, detail="Accès interdit")
 
         return session.model_dump()

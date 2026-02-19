@@ -304,17 +304,20 @@ class AgentEngine:
             session_id=session_id,
             role="user",
             content=message.content,
+            metadata=message.metadata if message.metadata else None,
         )
 
         # Exécuter via le pipeline
         result = await self._pipeline.execute(agent, message, context, user)
 
-        # Sauvegarder la réponse dans la session
+        # Sauvegarder la réponse dans la session (avec metadata pour restauration d'état)
         if result.success and result.response:
             await self._session_manager.add_message(
                 session_id=session_id,
                 role="assistant",
                 content=result.response.content,
+                attachments=result.response.attachments if result.response.attachments else None,
+                metadata=result.response.metadata if result.response.metadata else None,
             )
 
         return result
