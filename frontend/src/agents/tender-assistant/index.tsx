@@ -155,6 +155,16 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           ));
           break;
 
+        case 'all_documents_analyzed':
+          if (meta.analyzedDocIds) {
+            setDocuments(prev => prev.map((d: any) =>
+              meta.analyzedDocIds.includes(d.id) ? { ...d, analyzed: true } : d
+            ));
+          }
+          // Reload full state to get all analyses content
+          sendMessage('', { action: 'get_project_state' });
+          break;
+
         case 'comparison_result':
           setAnalyses(prev => ({
             ...prev,
@@ -237,6 +247,10 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
 
   const handleUpdateDocumentMeta = useCallback((docId: string, category: string, tags: string[]) => {
     sendMessage('', { action: 'update_document_meta', documentId: docId, category, tags });
+  }, [sendMessage]);
+
+  const handleAnalyzeAll = useCallback(() => {
+    sendMessage('Analyse tous les documents non analysés', { action: 'analyze_all_documents' });
   }, [sendMessage]);
 
   // -- Analysis handlers --
@@ -433,6 +447,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               analyses={analyses}
               documents={documents}
               onAnalyzeDocument={handleAnalyzeDocument}
+              onAnalyzeAll={handleAnalyzeAll}
               onCompare={handleCompare}
               isLoading={isLoading}
               comparisonAvailable={Object.keys(analyses).includes('_comparison')}

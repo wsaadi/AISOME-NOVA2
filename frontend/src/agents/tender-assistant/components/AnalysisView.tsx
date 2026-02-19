@@ -17,13 +17,14 @@ interface Props {
   analyses: Record<string, AnalysisData>;
   documents: Array<{ id: string; fileName: string; category: string; analyzed: boolean }>;
   onAnalyzeDocument: (docId: string) => void;
+  onAnalyzeAll: () => void;
   onCompare: () => void;
   isLoading: boolean;
   comparisonAvailable: boolean;
 }
 
 const AnalysisView: React.FC<Props> = ({
-  analyses, documents, onAnalyzeDocument, onCompare, isLoading, comparisonAvailable,
+  analyses, documents, onAnalyzeDocument, onAnalyzeAll, onCompare, isLoading, comparisonAvailable,
 }) => {
   const [selectedAnalysis, setSelectedAnalysis] = useState<string | null>(null);
 
@@ -85,7 +86,7 @@ const AnalysisView: React.FC<Props> = ({
             </span>
           </div>
           <div style={styles.markdownContent}>
-            <MarkdownView content={comparison.content} />
+            <MarkdownView content={comparison.content || ''} />
           </div>
         </div>
       )}
@@ -105,7 +106,7 @@ const AnalysisView: React.FC<Props> = ({
             </button>
           </div>
           <div style={styles.markdownContent}>
-            <MarkdownView content={analyses[selectedAnalysis].content} />
+            <MarkdownView content={analyses[selectedAnalysis].content || ''} />
           </div>
         </div>
       )}
@@ -134,7 +135,7 @@ const AnalysisView: React.FC<Props> = ({
                   </span>
                 </div>
                 <p style={{ fontSize: 12, color: '#666', margin: '4px 0 0' }}>
-                  {analysis.content.slice(0, 200)}...
+                  {(analysis.content || '').slice(0, 200)}...
                 </p>
               </div>
             ))
@@ -143,12 +144,23 @@ const AnalysisView: React.FC<Props> = ({
           {/* Quick analyze buttons for unanalyzed docs */}
           {documents.filter(d => !d.analyzed).length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <h3 style={styles.sectionTitle}>Documents non analysés</h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <h3 style={{ ...styles.sectionTitle, margin: 0 }}>
+                  Documents non analysés ({documents.filter(d => !d.analyzed).length})
+                </h3>
+                <button
+                  style={{ ...styles.btn, ...styles.btnPrimary, fontSize: 13, padding: '8px 16px' }}
+                  onClick={onAnalyzeAll}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Analyse en cours...' : 'Analyser tous les documents'}
+                </button>
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
                 {documents.filter(d => !d.analyzed).map(doc => (
                   <button
                     key={doc.id}
-                    style={{ ...styles.btn, ...styles.btnPrimary, ...styles.btnSmall }}
+                    style={{ ...styles.btn, ...styles.btnSecondary, ...styles.btnSmall }}
                     onClick={() => onAnalyzeDocument(doc.id)}
                     disabled={isLoading}
                   >
