@@ -362,28 +362,29 @@ class AgentEngine:
         """
         Create a callback that publishes progress to Redis.
 
-        The callback stores progress as a JSON hash in Redis with a 5-min TTL,
-        allowing the frontend to poll for real-time progress updates.
+        Uses a single Redis connection (created lazily on first call)
+        to avoid connection storms during bulk operations.
         """
+        import json
+        import redis as _redis
+        from app.config import get_settings
+        settings = get_settings()
+
+        # Single shared connection for all progress updates in this execution
+        client = _redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.REDIS_DB,
+            decode_responses=True,
+        )
+        key = f"agent_progress:{session_id}"
+
         def callback(percent: int, message: str):
             try:
-                import json
-                import redis as _redis
-                from app.config import get_settings
-                settings = get_settings()
-                r = _redis.Redis(
-                    host=settings.REDIS_HOST,
-                    port=settings.REDIS_PORT,
-                    db=settings.REDIS_DB,
-                    decode_responses=True,
-                )
-                r.setex(
-                    f"agent_progress:{session_id}",
-                    300,  # 5-minute TTL
-                    json.dumps({"progress": percent, "message": message}),
-                )
+                client.setex(key, 300, json.dumps({"progress": percent, "message": message}))
             except Exception:
                 pass
+
         return callback
 
     async def _get_llm_config(self, agent_slug: str) -> dict[str, Any]:
