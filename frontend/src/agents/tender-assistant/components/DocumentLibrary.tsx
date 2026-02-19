@@ -95,7 +95,8 @@ const DocumentLibrary: React.FC<Props> = ({
         <FileUpload
           onUpload={handleUpload}
           accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.csv,.txt"
-          label="Déposez vos documents ici (PDF, Word, Excel, PowerPoint, CSV, TXT)"
+          label="Sélectionner des documents (PDF, Word, Excel, PowerPoint, CSV, TXT)"
+          multiple
           disabled={isLoading}
         />
         {progress > 0 && progress < 100 && (
