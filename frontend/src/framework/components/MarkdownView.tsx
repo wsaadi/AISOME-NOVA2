@@ -106,14 +106,21 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
 
     (async () => {
       try {
-        const { svg } = await mermaid.render(id, code);
+        // Clean up any leftover render artifacts from previous attempts
+        const stale = document.getElementById(id);
+        if (stale) stale.remove();
+
+        const { svg } = await mermaid.render(id, code.trim());
         if (!cancelled && containerRef.current) {
           containerRef.current.innerHTML = svg;
         }
       } catch {
-        // If mermaid fails, show raw code
+        // Clean up the broken render element mermaid leaves behind
+        const broken = document.getElementById(id);
+        if (broken) broken.remove();
+        // Show a styled fallback instead of raw code dump
         if (!cancelled && containerRef.current) {
-          containerRef.current.textContent = code;
+          containerRef.current.innerHTML = `<pre style="background:#f5f5f5;padding:12px;border-radius:6px;font-size:12px;overflow:auto;border:1px solid #e0e0e0"><code>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
         }
       }
     })();
@@ -141,6 +148,14 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content }) => {
   if (introMatch) {
     processed = processed.slice(introMatch[1].length);
   }
+  // Strip JSON metadata blocks (LLM sometimes appends chapter_content JSON)
+  processed = processed.replace(/\n*(?:Bloc JSON[^\n]*\n)?```(?:json)?\s*\n\s*\{[^{}]*"type"\s*:\s*"chapter_content"[\s\S]*?```/g, '');
+  processed = processed.replace(/\n+(?:Bloc JSON[^\n]*\n+)\s*\{[^{}]*"type"\s*:\s*"chapter_content"[\s\S]*$/, '');
+  // Auto-wrap bare mermaid diagrams in code fences (graph TD/LR/BT/RL, flowchart, sequenceDiagram, etc.)
+  processed = processed.replace(
+    /^((?:graph\s+(?:TD|LR|BT|RL)|flowchart\s+(?:TD|LR|BT|RL)|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitgraph)\b[\s\S]*?)(?=\n\n(?![\s|])|$)/gm,
+    '```mermaid\n$1\n```'
+  );
   // Ensure blank lines before headings (required for proper markdown parsing)
   processed = processed.replace(/([^\n])\n(#{1,4}\s)/g, '$1\n\n$2');
   // Ensure blank lines before table blocks (only before first | row, not between consecutive table rows)
