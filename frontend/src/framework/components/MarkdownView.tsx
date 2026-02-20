@@ -136,6 +136,17 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content }) => {
   if (fenceMatch) {
     processed = fenceMatch[1].trim();
   }
+  // Remove LLM intro commentary (e.g. "Voici une version..." before markdown headings)
+  const introMatch = processed.match(/^(Voici\s+(?:une?|le|la|les)\s+.*?[.!]\s*\n{1,2})(#{1,4}\s+|\*\*|\|)/si);
+  if (introMatch) {
+    processed = processed.slice(introMatch[1].length);
+  }
+  // Ensure blank lines before headings (required for proper markdown parsing)
+  processed = processed.replace(/([^\n])\n(#{1,4}\s)/g, '$1\n\n$2');
+  // Ensure blank lines before table blocks
+  processed = processed.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
+  // Ensure blank lines before/after horizontal rules
+  processed = processed.replace(/([^\n])\n(---+)\n/g, '$1\n\n$2\n\n');
   // Convert HTML <br> tags to markdown line breaks
   processed = processed.replace(/<br\s*\/?>/gi, '  \n');
 

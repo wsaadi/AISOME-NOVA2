@@ -12,6 +12,7 @@ interface Props {
   pseudonyms: PseudonymEntry[];
   onUpdate: (pseudonyms: PseudonymEntry[]) => void;
   onDetect: () => void;
+  onApplyAll: () => void;
   isLoading: boolean;
 }
 
@@ -37,7 +38,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   other: { bg: '#f5f5f5', text: '#616161' },
 };
 
-const PseudonymPanel: React.FC<Props> = ({ pseudonyms, onUpdate, onDetect, isLoading }) => {
+const PseudonymPanel: React.FC<Props> = ({ pseudonyms, onUpdate, onDetect, onApplyAll, isLoading }) => {
   const [newPlaceholder, setNewPlaceholder] = useState('');
   const [newReal, setNewReal] = useState('');
   const [newCategory, setNewCategory] = useState('company');
@@ -129,6 +130,47 @@ const PseudonymPanel: React.FC<Props> = ({ pseudonyms, onUpdate, onDetect, isLoa
           {isLoading ? 'Détection en cours...' : 'Détecter automatiquement'}
         </button>
       </div>
+
+      {/* Apply all pseudonyms button */}
+      {pseudonyms.length > 0 && (
+        <div style={{
+          padding: 16,
+          borderRadius: 8,
+          backgroundColor: '#e8f5e9',
+          border: '1px solid #a5d6a7',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#2e7d32', margin: 0, marginBottom: 4 }}>
+              Appliquer la pseudonymisation
+            </p>
+            <p style={{ fontSize: 11, color: '#43a047', margin: 0 }}>
+              Remplace toutes les valeurs réelles par leurs pseudonymes dans tous les chapitres rédigés.
+            </p>
+          </div>
+          <button
+            style={{
+              ...styles.btn,
+              backgroundColor: '#2e7d32',
+              color: '#fff',
+              padding: '10px 20px',
+              fontSize: 13,
+              fontWeight: 600,
+              whiteSpace: 'nowrap' as const,
+              opacity: isLoading ? 0.5 : 1,
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+            }}
+            onClick={onApplyAll}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Application en cours...' : 'Appliquer partout'}
+          </button>
+        </div>
+      )}
 
       {/* Add form */}
       <div style={{

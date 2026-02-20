@@ -3,12 +3,37 @@
  *
  * Professional, ergonomic layout with:
  *   - Left navigation sidebar
- *   - Main content area
+ *   - Main content area with resizable columns
  *   - Optional right chat panel
+ *
+ * Uses CSS variables for dark-mode compatibility:
+ *   --ta-bg:           main background
+ *   --ta-bg-alt:       alternate/card background
+ *   --ta-surface:      surface/elevated background
+ *   --ta-text:         primary text color
+ *   --ta-text-dim:     secondary/dim text color
+ *   --ta-border:       default border/divider color
+ *   --ta-primary:      accent/primary color
+ *   --ta-primary-bg:   very faint accent tint
  */
 
 const SIDEBAR_WIDTH = 240;
 const CHAT_WIDTH = 380;
+
+/* ---------- helpers for theme-safe colors ---------- */
+const v = (name: string, fallback: string) => `var(${name}, ${fallback})`;
+
+// Main theme tokens — every hard-coded color below references these
+const T = {
+  bg:        v('--ta-bg', '#ffffff'),
+  bgAlt:     v('--ta-bg-alt', '#f7f8fa'),
+  surface:   v('--ta-surface', '#fafafa'),
+  text:      v('--ta-text', '#1a1a1a'),
+  textDim:   v('--ta-text-dim', '#6b7280'),
+  border:    v('--ta-border', '#e2e5e9'),
+  primary:   v('--ta-primary', '#1976d2'),
+  primaryBg: v('--ta-primary-bg', 'rgba(25,118,210,0.06)'),
+};
 
 const styles = {
   // ==========================================================================
@@ -19,6 +44,8 @@ const styles = {
     height: '100%',
     overflow: 'hidden' as const,
     fontFamily: '"Inter", "Roboto", "Helvetica Neue", sans-serif',
+    backgroundColor: T.bg,
+    color: T.text,
   },
 
   // ==========================================================================
@@ -29,24 +56,24 @@ const styles = {
     minWidth: SIDEBAR_WIDTH,
     display: 'flex' as const,
     flexDirection: 'column' as const,
-    borderRight: '1px solid var(--divider-color, #e0e0e0)',
-    backgroundColor: 'var(--sidebar-bg, #fafafa)',
+    borderRight: `1px solid ${T.border}`,
+    backgroundColor: T.surface,
     overflow: 'hidden' as const,
   },
   sidebarHeader: {
     padding: '16px 16px 12px',
-    borderBottom: '1px solid var(--divider-color, #e0e0e0)',
+    borderBottom: `1px solid ${T.border}`,
   },
   sidebarTitle: {
     fontSize: 15,
     fontWeight: 700,
-    color: 'var(--text-primary, #1a1a1a)',
+    color: T.text,
     margin: 0,
     letterSpacing: '-0.2px',
   },
   sidebarSubtitle: {
     fontSize: 11,
-    color: 'var(--text-secondary, #888)',
+    color: T.textDim,
     margin: '4px 0 0',
   },
   navList: {
@@ -62,18 +89,18 @@ const styles = {
     cursor: 'pointer' as const,
     fontSize: 13,
     fontWeight: 500,
-    color: 'var(--text-secondary, #555)',
+    color: T.textDim,
     transition: 'all 0.15s ease',
     border: 'none' as const,
-    background: 'none' as const,
+    background: 'transparent',
     width: '100%',
     textAlign: 'left' as const,
     borderLeft: '3px solid transparent',
   },
   navItemActive: {
-    color: 'var(--primary-color, #1976d2)',
-    backgroundColor: 'var(--primary-bg, rgba(25, 118, 210, 0.06))',
-    borderLeftColor: 'var(--primary-color, #1976d2)',
+    color: T.primary,
+    backgroundColor: T.primaryBg,
+    borderLeftColor: T.primary,
     fontWeight: 600,
   },
   navIcon: {
@@ -94,16 +121,16 @@ const styles = {
     fontWeight: 700,
     padding: '2px 6px',
     borderRadius: 10,
-    backgroundColor: 'var(--primary-color, #1976d2)',
+    backgroundColor: T.primary,
     color: '#fff',
     minWidth: 18,
     textAlign: 'center' as const,
   },
   sidebarFooter: {
     padding: '12px 16px',
-    borderTop: '1px solid var(--divider-color, #e0e0e0)',
+    borderTop: `1px solid ${T.border}`,
     fontSize: 11,
-    color: 'var(--text-secondary, #999)',
+    color: T.textDim,
   },
 
   // ==========================================================================
@@ -115,20 +142,21 @@ const styles = {
     flexDirection: 'column' as const,
     minWidth: 0,
     overflow: 'hidden' as const,
+    backgroundColor: T.bg,
   },
   mainHeader: {
     display: 'flex' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
     padding: '12px 20px',
-    borderBottom: '1px solid var(--divider-color, #e0e0e0)',
+    borderBottom: `1px solid ${T.border}`,
     minHeight: 52,
     flexShrink: 0,
   },
   mainTitle: {
     fontSize: 16,
     fontWeight: 700,
-    color: 'var(--text-primary, #1a1a1a)',
+    color: T.text,
     margin: 0,
   },
   mainActions: {
@@ -150,8 +178,8 @@ const styles = {
     minWidth: CHAT_WIDTH,
     display: 'flex' as const,
     flexDirection: 'column' as const,
-    borderLeft: '1px solid var(--divider-color, #e0e0e0)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    borderLeft: `1px solid ${T.border}`,
+    backgroundColor: T.bg,
   },
   chatPanelCollapsed: {
     width: 0,
@@ -159,20 +187,21 @@ const styles = {
     overflow: 'hidden' as const,
   },
   chatToggle: {
-    padding: '4px 8px',
+    padding: '4px 10px',
     fontSize: 12,
-    border: '1px solid var(--divider-color, #ddd)',
+    fontWeight: 500,
+    border: `1px solid ${T.border}`,
     borderRadius: 4,
-    background: 'var(--bg-color, #fff)',
+    background: T.bg,
     cursor: 'pointer' as const,
-    color: 'var(--text-secondary, #666)',
-    display: 'flex' as const,
+    color: T.textDim,
+    display: 'inline-flex' as const,
     alignItems: 'center' as const,
     gap: 4,
   },
   chatHeader: {
     padding: '12px 16px',
-    borderBottom: '1px solid var(--divider-color, #e0e0e0)',
+    borderBottom: `1px solid ${T.border}`,
     display: 'flex' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
@@ -180,7 +209,7 @@ const styles = {
   chatTitle: {
     fontSize: 13,
     fontWeight: 600,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
     margin: 0,
   },
 
@@ -198,8 +227,8 @@ const styles = {
     flexDirection: 'column' as const,
     padding: 14,
     borderRadius: 8,
-    border: '1px solid var(--divider-color, #e0e0e0)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    border: `1px solid ${T.border}`,
+    backgroundColor: T.bg,
     transition: 'box-shadow 0.15s ease',
     cursor: 'default' as const,
   },
@@ -212,7 +241,7 @@ const styles = {
   docFileName: {
     fontSize: 13,
     fontWeight: 600,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
     margin: 0,
     wordBreak: 'break-word' as const,
     flex: 1,
@@ -228,7 +257,7 @@ const styles = {
   },
   docMeta: {
     fontSize: 11,
-    color: 'var(--text-secondary, #888)',
+    color: T.textDim,
     marginTop: 6,
   },
   docTags: {
@@ -241,15 +270,15 @@ const styles = {
     fontSize: 10,
     padding: '2px 6px',
     borderRadius: 3,
-    backgroundColor: 'var(--divider-color, #f0f0f0)',
-    color: 'var(--text-secondary, #666)',
+    backgroundColor: T.bgAlt,
+    color: T.textDim,
   },
   docActions: {
     display: 'flex' as const,
     gap: 4,
     marginTop: 10,
     paddingTop: 8,
-    borderTop: '1px solid var(--divider-color, #f0f0f0)',
+    borderTop: `1px solid ${T.border}`,
   },
   uploadArea: {
     marginBottom: 16,
@@ -264,16 +293,16 @@ const styles = {
     fontSize: 11,
     padding: '4px 10px',
     borderRadius: 12,
-    border: '1px solid var(--divider-color, #ddd)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    border: `1px solid ${T.border}`,
+    backgroundColor: T.bg,
     cursor: 'pointer' as const,
     transition: 'all 0.15s ease',
     fontWeight: 500,
-    color: 'var(--text-secondary, #666)',
+    color: T.textDim,
   },
   filterChipActive: {
-    backgroundColor: 'var(--primary-color, #1976d2)',
-    borderColor: 'var(--primary-color, #1976d2)',
+    backgroundColor: T.primary,
+    borderColor: T.primary,
     color: '#fff',
   },
 
@@ -288,8 +317,8 @@ const styles = {
   analysisCard: {
     padding: 16,
     borderRadius: 8,
-    border: '1px solid var(--divider-color, #e0e0e0)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    border: `1px solid ${T.border}`,
+    backgroundColor: T.bg,
   },
   analysisCardHeader: {
     display: 'flex' as const,
@@ -300,7 +329,7 @@ const styles = {
   analysisCardTitle: {
     fontSize: 14,
     fontWeight: 600,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
     margin: 0,
   },
   comparisonBanner: {
@@ -309,8 +338,8 @@ const styles = {
     gap: 12,
     padding: 16,
     borderRadius: 8,
-    backgroundColor: 'var(--primary-bg, #e3f2fd)',
-    border: '1px solid var(--primary-color, #90caf9)',
+    backgroundColor: T.primaryBg,
+    border: `1px solid ${T.primary}`,
     marginBottom: 16,
   },
   statGrid: {
@@ -323,17 +352,18 @@ const styles = {
     textAlign: 'center' as const,
     padding: 12,
     borderRadius: 8,
-    backgroundColor: 'var(--bg-color, #fafafa)',
-    border: '1px solid var(--divider-color, #e0e0e0)',
+    backgroundColor: T.bgAlt,
+    border: `1px solid ${T.border}`,
   },
   statValue: {
     fontSize: 24,
     fontWeight: 700,
     margin: 0,
+    color: T.text,
   },
   statLabel: {
     fontSize: 11,
-    color: 'var(--text-secondary, #888)',
+    color: T.textDim,
     marginTop: 4,
   },
 
@@ -347,11 +377,13 @@ const styles = {
   },
   chapterTree: {
     width: 280,
-    minWidth: 280,
-    borderRight: '1px solid var(--divider-color, #e0e0e0)',
-    overflow: 'auto' as const,
-    padding: '8px 0',
+    minWidth: 200,
+    borderRight: `1px solid ${T.border}`,
+    overflow: 'hidden' as const,
+    display: 'flex' as const,
+    flexDirection: 'column' as const,
     flexShrink: 0,
+    backgroundColor: T.surface,
   },
   chapterItem: {
     display: 'flex' as const,
@@ -360,21 +392,21 @@ const styles = {
     padding: '8px 12px',
     cursor: 'pointer' as const,
     fontSize: 12,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
     transition: 'background-color 0.1s ease',
     border: 'none' as const,
-    background: 'none' as const,
+    background: 'transparent',
     width: '100%',
     textAlign: 'left' as const,
   },
   chapterItemActive: {
-    backgroundColor: 'var(--primary-bg, rgba(25, 118, 210, 0.08))',
+    backgroundColor: T.primaryBg,
     fontWeight: 600,
   },
   chapterNumber: {
     fontSize: 11,
     fontWeight: 700,
-    color: 'var(--primary-color, #1976d2)',
+    color: T.primary,
     minWidth: 28,
   },
   chapterTitle: {
@@ -398,21 +430,22 @@ const styles = {
     flexDirection: 'column' as const,
     minWidth: 0,
     overflow: 'hidden' as const,
+    backgroundColor: T.bg,
   },
   editorHeader: {
     padding: '12px 16px',
-    borderBottom: '1px solid var(--divider-color, #e0e0e0)',
+    borderBottom: `1px solid ${T.border}`,
     flexShrink: 0,
   },
   editorChapterTitle: {
     fontSize: 15,
     fontWeight: 600,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
     margin: 0,
   },
   editorChapterDesc: {
     fontSize: 12,
-    color: 'var(--text-secondary, #888)',
+    color: T.textDim,
     marginTop: 4,
   },
   editorToolbar: {
@@ -420,9 +453,10 @@ const styles = {
     alignItems: 'center' as const,
     gap: 6,
     padding: '8px 16px',
-    borderBottom: '1px solid var(--divider-color, #f0f0f0)',
+    borderBottom: `1px solid ${T.border}`,
     flexShrink: 0,
     flexWrap: 'wrap' as const,
+    backgroundColor: T.bgAlt,
   },
   editorContent: {
     flex: 1,
@@ -435,12 +469,12 @@ const styles = {
     padding: 12,
     fontSize: 13,
     lineHeight: 1.7,
-    border: '1px solid var(--divider-color, #e0e0e0)',
+    border: `1px solid ${T.border}`,
     borderRadius: 6,
     resize: 'vertical' as const,
     fontFamily: '"Inter", sans-serif',
-    color: 'var(--text-primary, #333)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    color: T.text,
+    backgroundColor: T.bg,
     outline: 'none' as const,
   },
   editorPlaceholder: {
@@ -448,8 +482,8 @@ const styles = {
     flexDirection: 'column' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    flex: 1,
-    color: 'var(--text-secondary, #999)',
+    height: '100%',
+    color: T.textDim,
     fontSize: 14,
     gap: 8,
   },
@@ -457,7 +491,7 @@ const styles = {
     margin: '8px 0 0',
     padding: '0 0 0 16px',
     fontSize: 12,
-    color: 'var(--text-secondary, #666)',
+    color: T.textDim,
     lineHeight: 1.6,
   },
 
@@ -502,7 +536,7 @@ const styles = {
     gap: 10,
     padding: 12,
     borderRadius: 6,
-    border: '1px solid var(--divider-color, #e0e0e0)',
+    border: `1px solid ${T.border}`,
     fontSize: 12,
   },
   issueSeverity: {
@@ -525,12 +559,12 @@ const styles = {
     marginBottom: 24,
     padding: 16,
     borderRadius: 8,
-    border: '1px solid var(--divider-color, #e0e0e0)',
+    border: `1px solid ${T.border}`,
   },
   exportLabel: {
     fontSize: 13,
     fontWeight: 600,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
     marginBottom: 8,
     display: 'block' as const,
   },
@@ -538,10 +572,10 @@ const styles = {
     width: '100%',
     padding: '8px 12px',
     fontSize: 13,
-    border: '1px solid var(--divider-color, #ddd)',
+    border: `1px solid ${T.border}`,
     borderRadius: 4,
-    color: 'var(--text-primary, #333)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    color: T.text,
+    backgroundColor: T.bg,
     outline: 'none' as const,
   },
 
@@ -553,8 +587,8 @@ const styles = {
     flexDirection: 'column' as const,
     padding: 14,
     borderRadius: 8,
-    border: '1px solid var(--divider-color, #e0e0e0)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    border: `1px solid ${T.border}`,
+    backgroundColor: T.bg,
     marginBottom: 8,
   },
   improvementHeader: {
@@ -566,7 +600,7 @@ const styles = {
   improvementTitle: {
     fontSize: 13,
     fontWeight: 600,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
     margin: 0,
     flex: 1,
   },
@@ -579,14 +613,14 @@ const styles = {
   },
   improvementDesc: {
     fontSize: 12,
-    color: 'var(--text-secondary, #666)',
+    color: T.textDim,
     marginTop: 6,
     lineHeight: 1.5,
   },
   addForm: {
     padding: 16,
     borderRadius: 8,
-    border: '2px dashed var(--divider-color, #ddd)',
+    border: `2px dashed ${T.border}`,
     marginBottom: 16,
     display: 'flex' as const,
     flexDirection: 'column' as const,
@@ -601,24 +635,24 @@ const styles = {
     flex: 1,
     padding: '8px 10px',
     fontSize: 13,
-    border: '1px solid var(--divider-color, #ddd)',
+    border: `1px solid ${T.border}`,
     borderRadius: 4,
     outline: 'none' as const,
-    color: 'var(--text-primary, #333)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    color: T.text,
+    backgroundColor: T.bg,
   },
   selectField: {
     padding: '8px 10px',
     fontSize: 13,
-    border: '1px solid var(--divider-color, #ddd)',
+    border: `1px solid ${T.border}`,
     borderRadius: 4,
     outline: 'none' as const,
-    color: 'var(--text-primary, #333)',
-    backgroundColor: 'var(--bg-color, #fff)',
+    color: T.text,
+    backgroundColor: T.bg,
   },
 
   // ==========================================================================
-  // Buttons
+  // Buttons — always explicit background, no browser-default gray
   // ==========================================================================
   btn: {
     padding: '6px 14px',
@@ -631,14 +665,17 @@ const styles = {
     display: 'inline-flex' as const,
     alignItems: 'center' as const,
     gap: 6,
+    backgroundColor: T.bg,  // explicit default — never browser gray
+    color: T.text,
   },
   btnPrimary: {
-    backgroundColor: 'var(--primary-color, #1976d2)',
+    backgroundColor: T.primary,
     color: '#fff',
   },
   btnSecondary: {
-    backgroundColor: 'var(--divider-color, #e0e0e0)',
-    color: 'var(--text-primary, #333)',
+    backgroundColor: T.bgAlt,
+    color: T.text,
+    border: `1px solid ${T.border}`,
   },
   btnDanger: {
     backgroundColor: '#d32f2f',
@@ -659,12 +696,12 @@ const styles = {
   sectionTitle: {
     fontSize: 14,
     fontWeight: 600,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
     margin: '0 0 8px',
   },
   helpText: {
     fontSize: 12,
-    color: 'var(--text-secondary, #888)',
+    color: T.textDim,
     margin: '0 0 12px',
     lineHeight: 1.5,
   },
@@ -674,7 +711,7 @@ const styles = {
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     padding: 40,
-    color: 'var(--text-secondary, #999)',
+    color: T.textDim,
     textAlign: 'center' as const,
     gap: 8,
   },
@@ -687,31 +724,44 @@ const styles = {
   },
   divider: {
     height: 1,
-    backgroundColor: 'var(--divider-color, #e0e0e0)',
+    backgroundColor: T.border,
     margin: '16px 0',
   },
   progressBar: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'var(--divider-color, #e0e0e0)',
+    backgroundColor: T.bgAlt,
     overflow: 'hidden' as const,
     margin: '8px 0',
   },
   progressFill: {
     height: '100%',
     borderRadius: 2,
-    backgroundColor: 'var(--primary-color, #1976d2)',
+    backgroundColor: T.primary,
     transition: 'width 0.3s ease',
   },
   progressText: {
     fontSize: 11,
-    color: 'var(--text-secondary, #888)',
+    color: T.textDim,
     textAlign: 'center' as const,
   },
   markdownContent: {
     fontSize: 13,
     lineHeight: 1.7,
-    color: 'var(--text-primary, #333)',
+    color: T.text,
+  },
+
+  // ==========================================================================
+  // Resize handle (drag to resize columns)
+  // ==========================================================================
+  resizeHandle: {
+    width: 5,
+    cursor: 'col-resize' as const,
+    backgroundColor: 'transparent',
+    transition: 'background-color 0.15s ease',
+    flexShrink: 0,
+    zIndex: 10,
+    '&:hover': { backgroundColor: T.primary },
   },
 };
 

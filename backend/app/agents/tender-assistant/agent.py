@@ -84,6 +84,7 @@ class TenderAssistantAgent(BaseAgent):
             "upload_template": self._handle_upload_template,
             "get_project_state": self._handle_get_state,
             "update_pseudonyms": self._handle_update_pseudonyms,
+            "apply_pseudonyms": self._handle_apply_pseudonyms,
             "detect_confidential": self._handle_detect_confidential,
             "export_workspace": self._handle_export_workspace,
             "import_workspace": self._handle_import_workspace,
@@ -182,12 +183,27 @@ class TenderAssistantAgent(BaseAgent):
         return text
 
     def _clean_chapter_content(self, text: str) -> str:
-        """Strip markdown code fences and other LLM artefacts from chapter content."""
+        """Strip markdown code fences, normalize line breaks, and fix LLM artefacts."""
         stripped = text.strip()
         # Remove wrapping ```markdown ... ``` or ```\n ... ```
         m = re.match(r"^```(?:markdown|md)?\s*\n(.*?)```\s*$", stripped, re.DOTALL)
         if m:
             stripped = m.group(1).strip()
+        # Remove LLM intro commentary (e.g. "Voici une version..." before actual content)
+        intro_pattern = re.match(
+            r"^(Voici\s+(?:une|le|la|les|un)\s+.*?[.!]\s*\n{1,2})(#{1,4}\s+|\*\*|\|)",
+            stripped, re.DOTALL | re.IGNORECASE,
+        )
+        if intro_pattern:
+            stripped = stripped[len(intro_pattern.group(1)):]
+        # Ensure blank lines before headings (required for proper markdown parsing)
+        stripped = re.sub(r"([^\n])\n(#{1,4}\s)", r"\1\n\n\2", stripped)
+        # Ensure blank lines before table blocks
+        stripped = re.sub(r"([^\n])\n(\|)", r"\1\n\n\2", stripped)
+        # Ensure blank lines before/after horizontal rules
+        stripped = re.sub(r"([^\n])\n(---+)\n", r"\1\n\n\2\n\n", stripped)
+        # Normalize Windows line endings
+        stripped = stripped.replace("\r\n", "\n")
         return stripped
 
     async def _llm_chat(
@@ -1673,6 +1689,46 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
                 "type": "pseudonyms_updated",
                 "pseudonyms": new_pseudonyms,
                 "chapters": chapters if changed else None,
+            }
+        )
+
+    async def _handle_apply_pseudonyms(
+        self, message: UserMessage, context: AgentContext, system_prompt: str
+    ) -> AgentResponse:
+        """Force-apply all pseudonyms to every chapter content."""
+        pseudonyms = await self._get_pseudonyms(context)
+        if not pseudonyms:
+            return AgentResponse(
+                content="Aucune règle de pseudonymisation définie.",
+                metadata={"type": "pseudonyms_applied", "replacements": 0}
+            )
+
+        chapters = await self._get_chapters(context)
+        total_replacements = 0
+
+        for entry in pseudonyms:
+            real = entry.get("real", "")
+            placeholder = entry.get("placeholder", "")
+            if not real or not placeholder:
+                continue
+            for ch in chapters:
+                if ch.get("content") and real in ch["content"]:
+                    ch["content"] = ch["content"].replace(real, placeholder)
+                    total_replacements += 1
+                for sub in ch.get("sub_chapters", []):
+                    if sub.get("content") and real in sub["content"]:
+                        sub["content"] = sub["content"].replace(real, placeholder)
+                        total_replacements += 1
+
+        if total_replacements > 0:
+            await self._save_chapters(context, chapters)
+
+        return AgentResponse(
+            content=f"Pseudonymisation appliquée : {total_replacements} remplacement(s) effectué(s).",
+            metadata={
+                "type": "pseudonyms_applied",
+                "replacements": total_replacements,
+                "chapters": chapters,
             }
         )
 
