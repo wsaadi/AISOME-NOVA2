@@ -550,7 +550,7 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
             prompt=structure_prompt,
             system_prompt=system_prompt,
             temperature=0.3,
-            max_tokens=8192,
+            max_tokens=16384,
         )
 
         # Try to parse chapters from JSON in response
@@ -692,7 +692,59 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
                     logger.info(f"Extracted {len(result)} chapters from repaired truncated JSON")
                     return result
 
-        # Strategy 4: find the largest JSON object in the raw text
+        # Strategy 4: extract individual chapter objects from truncated JSON
+        # Find the "chapters" array and extract each complete {...} at array level
+        chapters_start = response.find('"chapters"')
+        if chapters_start == -1:
+            chapters_start = response.find("'chapters'")
+        if chapters_start != -1:
+            bracket_pos = response.find('[', chapters_start)
+            if bracket_pos != -1:
+                individual_chapters = []
+                depth = 0
+                obj_start = -1
+                i = bracket_pos + 1
+                while i < len(response):
+                    c = response[i]
+                    # Skip strings to avoid counting braces inside values
+                    if c == '"':
+                        i += 1
+                        while i < len(response):
+                            if response[i] == '\\':
+                                i += 2
+                                continue
+                            if response[i] == '"':
+                                break
+                            i += 1
+                    elif c == '{':
+                        if depth == 0:
+                            obj_start = i
+                        depth += 1
+                    elif c == '}':
+                        depth -= 1
+                        if depth == 0 and obj_start != -1:
+                            obj_text = response[obj_start:i + 1]
+                            try:
+                                obj = json.loads(obj_text)
+                                if isinstance(obj, dict) and ('title' in obj or 'id' in obj):
+                                    individual_chapters.append(obj)
+                            except (json.JSONDecodeError, ValueError):
+                                pass
+                            obj_start = -1
+                    elif c == ']' and depth == 0:
+                        break  # End of chapters array
+                    i += 1
+
+                if individual_chapters:
+                    result = _normalize_chapters(individual_chapters)
+                    if result:
+                        logger.info(
+                            f"Extracted {len(result)} chapters individually "
+                            f"from truncated JSON (chapter-by-chapter parsing)"
+                        )
+                        return result
+
+        # Strategy 5: find the largest JSON object in the raw text
         brace_depth = 0
         start = -1
         candidates = []
@@ -706,13 +758,6 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
                 if brace_depth == 0 and start != -1:
                     candidates.append(response[start:i + 1])
                     start = -1
-
-        # If we have an unclosed brace, try to repair from the start
-        if brace_depth > 0 and start != -1:
-            raw = response[start:]
-            repaired = _repair_truncated_json(raw)
-            if repaired:
-                candidates.append(repaired)
 
         # Sort by length descending — the biggest JSON is most likely the structure
         candidates.sort(key=len, reverse=True)
