@@ -22,13 +22,14 @@ interface Props {
   onImproveChapter: (chapterId: string, instructions: string) => void;
   onSaveContent: (chapterId: string, content: string) => void;
   onUpdateStructure: (chapters: Chapter[]) => void;
+  onGenerateStructure: () => void;
   isLoading: boolean;
   streamingContent: string;
 }
 
 const ResponseEditor: React.FC<Props> = ({
   chapters, onWriteChapter, onImproveChapter, onSaveContent, onUpdateStructure,
-  isLoading, streamingContent,
+  onGenerateStructure, isLoading, streamingContent,
 }) => {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -108,9 +109,22 @@ const ResponseEditor: React.FC<Props> = ({
         <p style={styles.emptyText}>
           Aucune structure de réponse définie.
         </p>
-        <p style={{ fontSize: 12, color: '#999' }}>
-          Allez dans l'onglet "Analyse" puis utilisez le chat pour demander la génération de la structure.
+        <p style={{ fontSize: 12, color: '#999', marginBottom: 16 }}>
+          Générez automatiquement la structure des chapitres à partir de vos documents analysés.
         </p>
+        <button
+          style={{
+            ...styles.btn,
+            ...styles.btnPrimary,
+            padding: '10px 24px',
+            fontSize: 14,
+            ...(isLoading ? styles.btnDisabled : {}),
+          }}
+          onClick={onGenerateStructure}
+          disabled={isLoading}
+        >
+          {isLoading ? 'Génération en cours...' : 'Générer la structure'}
+        </button>
       </div>
     );
   }

@@ -533,6 +533,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               onImproveChapter={handleImproveChapter}
               onSaveContent={handleSaveContent}
               onUpdateStructure={handleUpdateStructure}
+              onGenerateStructure={handleGenerateStructure}
               isLoading={isLoading}
               streamingContent={streamingContent}
             />
