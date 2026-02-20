@@ -240,6 +240,17 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
         case 'export_complete':
           setLastExportKey(meta.fileKey);
           setLastExportName(meta.fileName);
+          // Auto-trigger DOCX download
+          if (meta.fileKey && meta.fileName) {
+            storage.download(meta.fileKey).then(blob => {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = meta.fileName;
+              a.click();
+              URL.revokeObjectURL(url);
+            }).catch(err => console.error('Auto-download export failed:', err));
+          }
           break;
 
         case 'template_uploaded':
@@ -267,6 +278,15 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           if (meta.fileKey && meta.fileName) {
             setLastExportKey(meta.fileKey);
             setLastExportName(meta.fileName);
+            // Auto-trigger download
+            storage.download(meta.fileKey).then(blob => {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = meta.fileName;
+              a.click();
+              URL.revokeObjectURL(url);
+            }).catch(err => console.error('Auto-download workspace export failed:', err));
           }
           break;
 
@@ -439,6 +459,36 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
   // ==========================================================================
   // Render
   // ==========================================================================
+
+  // Show a loading screen while the workspace state is being fetched
+  if (!stateLoaded) {
+    return (
+      <div style={{
+        ...styles.root,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column' as const,
+        gap: 16,
+      }}>
+        <div style={{
+          width: 48,
+          height: 48,
+          border: '4px solid #e0e0e0',
+          borderTopColor: '#1976d2',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <p style={{ fontSize: 15, fontWeight: 600, color: '#555' }}>
+          Chargement de l'espace de travail...
+        </p>
+        <p style={{ fontSize: 12, color: '#999' }}>
+          Récupération des documents, chapitres et analyses
+        </p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.root}>

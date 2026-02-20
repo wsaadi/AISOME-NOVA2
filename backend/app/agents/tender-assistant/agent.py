@@ -181,6 +181,15 @@ class TenderAssistantAgent(BaseAgent):
                 text = text.replace(placeholder, real)
         return text
 
+    def _clean_chapter_content(self, text: str) -> str:
+        """Strip markdown code fences and other LLM artefacts from chapter content."""
+        stripped = text.strip()
+        # Remove wrapping ```markdown ... ``` or ```\n ... ```
+        m = re.match(r"^```(?:markdown|md)?\s*\n(.*?)```\s*$", stripped, re.DOTALL)
+        if m:
+            stripped = m.group(1).strip()
+        return stripped
+
     async def _llm_chat(
         self, context: AgentContext, prompt: str,
         system_prompt: str, temperature: float = 0.3, max_tokens: int = 4096,
@@ -1205,15 +1214,16 @@ CONSIGNES D'AMÉLIORATION :
         return None
 
     def _update_chapter_content(self, chapters: list[dict], chapter_id: str, content: str) -> None:
+        cleaned = self._clean_chapter_content(content)
         for ch in chapters:
             if ch["id"] == chapter_id:
-                ch["content"] = content
+                ch["content"] = cleaned
                 ch["status"] = "written"
                 ch["lastModified"] = datetime.now().isoformat()
                 return
             for sub in ch.get("sub_chapters", []):
                 if sub["id"] == chapter_id:
-                    sub["content"] = content
+                    sub["content"] = cleaned
                     sub["status"] = "written"
                     sub["lastModified"] = datetime.now().isoformat()
                     return
@@ -1711,29 +1721,39 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
         # List already-known real values to help LLM avoid duplicates
         known_reals = [e.get("real", "") for e in existing_pseudonyms if e.get("real")]
 
-        detection_prompt = f"""Analyse les documents suivants et identifie toutes les données confidentielles qui devraient être pseudonymisées.
+        detection_prompt = f"""Analyse les documents suivants et identifie TOUTES les données confidentielles qui devraient être pseudonymisées.
 
-Catégories à détecter :
-- **company** : noms de sociétés, entreprises, organisations, groupements
-- **person** : noms de personnes (prénom + nom)
-- **project** : noms de projets, programmes, appels d'offres
-- **client** : noms de clients, donneurs d'ordre, maîtres d'ouvrage
-- **location** : adresses précises, noms de sites spécifiques
-- **other** : numéros de contrat, montants financiers spécifiques, références internes
+Catégories à détecter (sois EXHAUSTIF) :
+- **company** : noms de sociétés, entreprises, organisations, groupements, filiales, marques, sous-traitants
+- **person** : noms de personnes (prénom + nom ou nom seul), contacts, signataires, responsables
+- **project** : noms de projets, programmes, noms de marchés, intitulés d'appels d'offres
+- **client** : noms de clients, donneurs d'ordre, maîtres d'ouvrage, acheteurs publics, centrales d'achat (ex: UGAP, RESAH, CAIH, etc.)
+- **reference** : codes d'appel d'offres, numéros de marché, références AO (ex: 19U045, 2024-AO-123), numéros BOAMP, numéros de lot
+- **location** : adresses précises, noms de sites spécifiques, bâtiments
+- **financial** : montants financiers spécifiques, prix unitaires, chiffres d'affaires précis
+- **other** : numéros de contrat, numéros SIRET/SIREN, numéros de téléphone, emails, dates spécifiques de contrats
 
 {f"Entités déjà connues (NE PAS les inclure dans les résultats) : {', '.join(known_reals)}" if known_reals else ""}
 
 IMPORTANT :
-- Ne détecte que les entités SPÉCIFIQUES et CONFIDENTIELLES (pas les termes génériques)
-- Ignore les noms de pays, de villes connues, les termes techniques standards
-- Pour chaque entité, propose un pseudonyme adapté (ex: [Société A], [M. Dupont], [Projet Alpha])
-- Numérote les pseudonymes de la même catégorie (ex: [Société 1], [Société 2])
+- SOIS EXHAUSTIF : détecte TOUTES les entités, même les petites références comme les codes AO
+- Inclus les acronymes et noms courts de clients ou organisations
+- Les codes alphanumériques de type référence AO (ex: 19U045) DOIVENT être détectés
+- Les noms de centrales d'achat et organismes publics DOIVENT être détectés
+- Ignore les termes purement génériques (ex: "appel d'offres", "marché public")
+- Pour chaque entité, propose un pseudonyme adapté :
+  - Sociétés: [Société 1], [Société 2]...
+  - Personnes: [Personne 1], [Personne 2]...
+  - Clients: [Client 1], [Client 2]...
+  - Références: [Réf. AO 1], [Réf. AO 2]...
+  - Financier: [Montant 1], [Montant 2]...
 
 Réponds UNIQUEMENT avec un JSON valide, sous la forme d'un tableau :
 ```json
 [
   {{"placeholder": "[Société 1]", "real": "NomDeLaSociété", "category": "company"}},
-  {{"placeholder": "[Personne 1]", "real": "Jean Martin", "category": "person"}}
+  {{"placeholder": "[Client 1]", "real": "UGAP", "category": "client"}},
+  {{"placeholder": "[Réf. AO 1]", "real": "19U045", "category": "reference"}}
 ]
 ```
 
@@ -1783,7 +1803,7 @@ Documents à analyser :
                     "id": f"ps-auto-{len(existing_pseudonyms) + len(new_entries) + 1}-{datetime.now().strftime('%H%M%S')}",
                     "placeholder": placeholder,
                     "real": real,
-                    "category": category if category in ("company", "person", "project", "client", "location", "other") else "other",
+                    "category": category if category in ("company", "person", "project", "client", "location", "reference", "financial", "other") else "other",
                 })
 
             context.set_progress(90, "Mise à jour de la liste...")
