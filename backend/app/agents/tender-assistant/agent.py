@@ -550,7 +550,7 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
             prompt=structure_prompt,
             system_prompt=system_prompt,
             temperature=0.3,
-            max_tokens=4096,
+            max_tokens=8192,
         )
 
         # Try to parse chapters from JSON in response
@@ -602,38 +602,97 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
                 result.append(chapter)
             return result
 
-        # Strategy 1: extract from ```json ... ``` fenced block
-        json_blocks = re.findall(r'```json\s*([\s\S]*?)```', response)
-        for block in json_blocks:
+        def _try_parse(text: str) -> list[dict] | None:
+            """Try to parse JSON text and extract chapters."""
             try:
-                data = json.loads(block.strip())
+                data = json.loads(text)
                 chapters = data.get("chapters", []) if isinstance(data, dict) else data if isinstance(data, list) else []
                 if chapters:
                     result = _normalize_chapters(chapters)
                     if result:
-                        logger.info(f"Extracted {len(result)} chapters from ```json block")
                         return result
             except (json.JSONDecodeError, ValueError):
-                continue
+                pass
+            return None
+
+        def _repair_truncated_json(text: str) -> str | None:
+            """Attempt to repair truncated JSON by closing open brackets/braces."""
+            # Count open brackets and braces
+            open_braces = 0
+            open_brackets = 0
+            in_string = False
+            escape = False
+            for c in text:
+                if escape:
+                    escape = False
+                    continue
+                if c == '\\' and in_string:
+                    escape = True
+                    continue
+                if c == '"' and not escape:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if c == '{':
+                    open_braces += 1
+                elif c == '}':
+                    open_braces -= 1
+                elif c == '[':
+                    open_brackets += 1
+                elif c == ']':
+                    open_brackets -= 1
+
+            if open_braces <= 0 and open_brackets <= 0:
+                return None  # Not truncated
+
+            # Trim trailing incomplete entry (e.g. cut mid-value/key)
+            # Find last complete structure by looking for last },  or }
+            trimmed = text.rstrip()
+            # Remove trailing comma if present
+            if trimmed.endswith(','):
+                trimmed = trimmed[:-1]
+
+            # Close all open brackets/braces
+            repair = trimmed + (']' * open_brackets) + ('}' * open_braces)
+            return repair
+
+        # Strategy 1: extract from ```json ... ``` fenced block
+        json_blocks = re.findall(r'```json\s*([\s\S]*?)```', response)
+        for block in json_blocks:
+            result = _try_parse(block.strip())
+            if result:
+                logger.info(f"Extracted {len(result)} chapters from ```json block")
+                return result
 
         # Strategy 2: extract from any ``` ... ``` fenced block
         code_blocks = re.findall(r'```\s*([\s\S]*?)```', response)
         for block in code_blocks:
             block = block.strip()
-            if not block.startswith(('{', '[')):
-                continue
-            try:
-                data = json.loads(block)
-                chapters = data.get("chapters", []) if isinstance(data, dict) else data if isinstance(data, list) else []
-                if chapters:
-                    result = _normalize_chapters(chapters)
-                    if result:
-                        logger.info(f"Extracted {len(result)} chapters from code block")
-                        return result
-            except (json.JSONDecodeError, ValueError):
-                continue
+            if block.startswith(('{', '[')):
+                result = _try_parse(block)
+                if result:
+                    logger.info(f"Extracted {len(result)} chapters from code block")
+                    return result
 
-        # Strategy 3: find the largest JSON object in the raw text
+        # Strategy 3: truncated ```json block (no closing ```)
+        truncated_match = re.search(r'```json\s*([\s\S]+)$', response)
+        if truncated_match:
+            raw_json = truncated_match.group(1).strip()
+            # Try direct parse first
+            result = _try_parse(raw_json)
+            if result:
+                logger.info(f"Extracted {len(result)} chapters from truncated ```json block")
+                return result
+            # Try repair
+            repaired = _repair_truncated_json(raw_json)
+            if repaired:
+                result = _try_parse(repaired)
+                if result:
+                    logger.info(f"Extracted {len(result)} chapters from repaired truncated JSON")
+                    return result
+
+        # Strategy 4: find the largest JSON object in the raw text
         brace_depth = 0
         start = -1
         candidates = []
@@ -648,19 +707,20 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
                     candidates.append(response[start:i + 1])
                     start = -1
 
+        # If we have an unclosed brace, try to repair from the start
+        if brace_depth > 0 and start != -1:
+            raw = response[start:]
+            repaired = _repair_truncated_json(raw)
+            if repaired:
+                candidates.append(repaired)
+
         # Sort by length descending — the biggest JSON is most likely the structure
         candidates.sort(key=len, reverse=True)
         for candidate in candidates:
-            try:
-                data = json.loads(candidate)
-                chapters = data.get("chapters", []) if isinstance(data, dict) else []
-                if chapters:
-                    result = _normalize_chapters(chapters)
-                    if result:
-                        logger.info(f"Extracted {len(result)} chapters from raw JSON object")
-                        return result
-            except (json.JSONDecodeError, ValueError):
-                continue
+            result = _try_parse(candidate)
+            if result:
+                logger.info(f"Extracted {len(result)} chapters from raw JSON object")
+                return result
 
         logger.warning(
             f"Failed to extract chapters from LLM response "
