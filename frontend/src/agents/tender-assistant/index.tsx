@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AgentViewProps } from 'framework/types';
 import { ChatPanel } from 'framework/components';
 import { useAgent, useAgentStorage } from 'framework/hooks';
@@ -97,19 +97,33 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
   const [lastExportKey, setLastExportKey] = useState<string | null>(null);
   const [lastExportName, setLastExportName] = useState<string | null>(null);
   const [stateLoaded, setStateLoaded] = useState(false);
+  const processedMsgCount = useRef(0);
 
   // -- Load initial state (wait for session restore first) --
   useEffect(() => {
     if (sessionRestored && !stateLoaded) {
+      // Skip restored messages — get_project_state will give us fresh state.
+      // Without this, the messages effect would re-process old messages
+      // (e.g. all_documents_analyzed) and trigger sendMessage loops.
+      processedMsgCount.current = messages.length;
       sendMessage('', { action: 'get_project_state' }).then(() => {
         setStateLoaded(true);
       });
     }
   }, [sessionRestored]);
 
-  // -- Process messages to update state --
+  // -- Process NEW messages only to update state --
+  // We track how many messages we've already processed to avoid
+  // re-processing old messages (which would cause infinite loops
+  // when a handler calls sendMessage).
   useEffect(() => {
-    for (const msg of messages) {
+    const startIdx = processedMsgCount.current;
+    if (messages.length <= startIdx) return;
+    processedMsgCount.current = messages.length;
+
+    const newMessages = messages.slice(startIdx);
+
+    for (const msg of newMessages) {
       if (msg.role !== 'assistant' || !msg.metadata) continue;
       const meta = msg.metadata as Record<string, any>;
       const { type } = meta;
