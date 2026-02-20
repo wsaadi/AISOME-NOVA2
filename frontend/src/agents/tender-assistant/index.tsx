@@ -524,12 +524,18 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
         .ta-resize-handle { background: transparent; transition: background 0.15s; }
         .ta-resize-handle:hover { background: var(--ta-primary, #1976d2); }
         .ta-root button {
+          -webkit-appearance: none !important;
+          -moz-appearance: none !important;
+          appearance: none !important;
           outline: none !important;
-          -webkit-appearance: none;
-          -moz-appearance: none;
+          background: transparent;
+          border: none;
+          font-family: inherit;
+          color: inherit;
         }
         .ta-root button:focus,
-        .ta-root button:focus-visible {
+        .ta-root button:focus-visible,
+        .ta-root button:active {
           outline: none !important;
         }
       `}</style>
