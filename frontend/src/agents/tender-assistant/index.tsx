@@ -213,6 +213,13 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           }
           break;
 
+        case 'write_all_complete':
+        case 'improve_all_complete':
+          if (meta.chapters) {
+            setChapters(meta.chapters);
+          }
+          break;
+
         case 'compliance_check':
           setComplianceResult(msg.content);
           break;
@@ -320,6 +327,14 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
 
   const handleImproveChapter = useCallback((chapterId: string, instructions: string) => {
     sendMessage(instructions, { action: 'improve_chapter', chapterId });
+  }, [sendMessage]);
+
+  const handleWriteAll = useCallback(() => {
+    sendMessage('Rédige tous les chapitres non rédigés', { action: 'write_all_chapters' });
+  }, [sendMessage]);
+
+  const handleImproveAll = useCallback(() => {
+    sendMessage('Améliore tous les chapitres rédigés', { action: 'improve_all_chapters' });
   }, [sendMessage]);
 
   const handleSaveContent = useCallback((chapterId: string, content: string) => {
@@ -579,6 +594,8 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               chapters={chapters}
               onWriteChapter={handleWriteChapter}
               onImproveChapter={handleImproveChapter}
+              onWriteAll={handleWriteAll}
+              onImproveAll={handleImproveAll}
               onSaveContent={handleSaveContent}
               onUpdateStructure={handleUpdateStructure}
               onGenerateStructure={handleGenerateStructure}

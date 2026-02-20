@@ -74,7 +74,9 @@ class TenderAssistantAgent(BaseAgent):
             "generate_structure": self._handle_generate_structure,
             "update_structure": self._handle_update_structure,
             "write_chapter": self._handle_write_chapter,
+            "write_all_chapters": self._handle_write_all_chapters,
             "improve_chapter": self._handle_improve_chapter,
+            "improve_all_chapters": self._handle_improve_all_chapters,
             "check_compliance": self._handle_check_compliance,
             "add_improvement": self._handle_add_improvement,
             "delete_improvement": self._handle_delete_improvement,
@@ -1013,6 +1015,182 @@ amélioré (pas juste les modifications)."""
                 "type": "chapter_improved",
                 "chapterId": chapter_id,
                 "chapterTitle": chapter["title"],
+            }
+        )
+
+    # =========================================================================
+    # Bulk writing / improving
+    # =========================================================================
+
+    async def _handle_write_all_chapters(
+        self, message: UserMessage, context: AgentContext, system_prompt: str
+    ) -> AgentResponse:
+        """Write all chapters that don't have content yet."""
+        chapters = await self._get_chapters(context)
+        docs = await self._get_documents_meta(context)
+        analyses = await self._get_analyses(context)
+        improvements = await self._get_improvements(context)
+
+        # Collect all unwritten chapters (top-level + sub-chapters)
+        unwritten = []
+        for ch in chapters:
+            if not ch.get("content"):
+                unwritten.append(ch)
+            for sub in ch.get("sub_chapters", []):
+                if not sub.get("content"):
+                    unwritten.append(sub)
+
+        if not unwritten:
+            return AgentResponse(
+                content="Tous les chapitres sont déjà rédigés.",
+                metadata={"type": "write_all_complete"}
+            )
+
+        total = len(unwritten)
+        context.set_progress(5, f"Rédaction de {total} chapitre(s)...")
+
+        for idx, chapter in enumerate(unwritten):
+            pct = int(5 + (idx / total) * 90)
+            context.set_progress(pct, f"Rédaction {idx+1}/{total} : {chapter['title']}...")
+
+            relevant_texts = await self._gather_relevant_context(context, chapter, docs, analyses)
+
+            improvements_text = ""
+            related_improvements = [
+                imp for imp in improvements
+                if chapter["id"] in imp.get("linkedChapters", [])
+            ]
+            if related_improvements:
+                improvements_text = "\nPOINTS D'AMÉLIORATION LIÉS À CE CHAPITRE :\n"
+                for imp in related_improvements:
+                    improvements_text += f"- [{imp.get('priority', 'normal')}] {imp['title']}: {imp.get('description', '')}\n"
+
+            write_prompt = f"""Rédige le chapitre suivant de la réponse à l'appel d'offres.
+
+CHAPITRE : {chapter['number']} - {chapter['title']}
+DESCRIPTION : {chapter.get('description', '')}
+POINTS CLÉS À COUVRIR : {json.dumps(chapter.get('key_points', []), ensure_ascii=False)}
+EXIGENCES COUVERTES : {json.dumps(chapter.get('requirements_covered', []), ensure_ascii=False)}
+
+CONTEXTE DOCUMENTAIRE :
+{relevant_texts[:12000]}
+{improvements_text}
+
+CONSIGNES :
+1. CAPITALISE AU MAXIMUM sur le contenu de la réponse précédente si fourni.
+2. ENRICHIS avec les nouvelles exigences du nouvel AO.
+3. Utilise du markdown. Sois concret, factuel et orienté solution.
+4. Ne commence PAS par un titre qui répète le nom du chapitre."""
+
+            try:
+                content = await self._llm_chat(
+                    context, prompt=write_prompt,
+                    system_prompt=system_prompt,
+                    temperature=0.5, max_tokens=4096,
+                )
+                self._update_chapter_content(chapters, chapter["id"], content)
+            except Exception as e:
+                logger.error(f"Failed to write chapter {chapter['title']}: {e}")
+
+        await self._save_chapters(context, chapters)
+        context.set_progress(100, "Rédaction complète terminée")
+
+        written_count = sum(
+            1 for ch in unwritten if ch.get("content")
+        )
+
+        return AgentResponse(
+            content=f"{written_count}/{total} chapitres rédigés avec succès.",
+            metadata={
+                "type": "write_all_complete",
+                "chapters": chapters,
+                "writtenCount": written_count,
+            }
+        )
+
+    async def _handle_improve_all_chapters(
+        self, message: UserMessage, context: AgentContext, system_prompt: str
+    ) -> AgentResponse:
+        """Improve all chapters that already have content."""
+        chapters = await self._get_chapters(context)
+        docs = await self._get_documents_meta(context)
+        analyses = await self._get_analyses(context)
+        improvements = await self._get_improvements(context)
+
+        # Collect all written chapters
+        written = []
+        for ch in chapters:
+            if ch.get("content"):
+                written.append(ch)
+            for sub in ch.get("sub_chapters", []):
+                if sub.get("content"):
+                    written.append(sub)
+
+        if not written:
+            return AgentResponse(
+                content="Aucun chapitre rédigé à améliorer.",
+                metadata={"type": "improve_all_complete"}
+            )
+
+        total = len(written)
+        context.set_progress(5, f"Amélioration de {total} chapitre(s)...")
+
+        for idx, chapter in enumerate(written):
+            pct = int(5 + (idx / total) * 90)
+            context.set_progress(pct, f"Amélioration {idx+1}/{total} : {chapter['title']}...")
+
+            relevant_texts = await self._gather_relevant_context(context, chapter, docs, analyses)
+
+            improvements_text = ""
+            related_improvements = [
+                imp for imp in improvements
+                if chapter["id"] in imp.get("linkedChapters", [])
+            ]
+            if related_improvements:
+                improvements_text = "\nPOINTS D'AMÉLIORATION À INTÉGRER :\n"
+                for imp in related_improvements:
+                    improvements_text += f"- [{imp.get('priority', 'normal')}] {imp['title']}: {imp.get('description', '')}\n"
+
+            improve_prompt = f"""Améliore le chapitre suivant de la réponse à l'appel d'offres.
+
+CHAPITRE : {chapter['number']} - {chapter['title']}
+
+CONTENU ACTUEL :
+{chapter['content']}
+
+CONTEXTE DOCUMENTAIRE (pour enrichir et vérifier la cohérence) :
+{relevant_texts[:10000]}
+{improvements_text}
+
+CONSIGNES D'AMÉLIORATION :
+1. CAPITALISE sur les documents d'analyse et la réponse précédente pour enrichir le contenu.
+2. Améliore les formulations pour plus de clarté et d'impact professionnel.
+3. Vérifie la cohérence avec les exigences du nouvel AO.
+4. Ajoute des données factuelles, tableaux ou éléments concrets si pertinent.
+5. Intègre les points d'amélioration identifiés ci-dessus.
+6. Conserve la structure globale sauf si elle peut être significativement améliorée.
+7. Retourne le contenu COMPLET amélioré (pas juste les modifications).
+8. Ne commence PAS par un titre qui répète le nom du chapitre."""
+
+            try:
+                improved = await self._llm_chat(
+                    context, prompt=improve_prompt,
+                    system_prompt=system_prompt,
+                    temperature=0.5, max_tokens=4096,
+                )
+                self._update_chapter_content(chapters, chapter["id"], improved)
+            except Exception as e:
+                logger.error(f"Failed to improve chapter {chapter['title']}: {e}")
+
+        await self._save_chapters(context, chapters)
+        context.set_progress(100, "Amélioration complète terminée")
+
+        return AgentResponse(
+            content=f"{total} chapitres améliorés avec succès.",
+            metadata={
+                "type": "improve_all_complete",
+                "chapters": chapters,
+                "improvedCount": total,
             }
         )
 

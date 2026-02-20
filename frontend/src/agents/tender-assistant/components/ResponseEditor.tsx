@@ -27,6 +27,8 @@ interface Props {
   chapters: Chapter[];
   onWriteChapter: (chapterId: string, instructions: string) => void;
   onImproveChapter: (chapterId: string, instructions: string) => void;
+  onWriteAll: () => void;
+  onImproveAll: () => void;
   onSaveContent: (chapterId: string, content: string) => void;
   onUpdateStructure: (chapters: Chapter[]) => void;
   onGenerateStructure: () => void;
@@ -74,8 +76,9 @@ const stripLeadingHeading = (content: string, chapterTitle: string): string => {
 };
 
 const ResponseEditor: React.FC<Props> = ({
-  chapters, onWriteChapter, onImproveChapter, onSaveContent, onUpdateStructure,
-  onGenerateStructure, isLoading, streamingContent, error, pseudonyms = [],
+  chapters, onWriteChapter, onImproveChapter, onWriteAll, onImproveAll,
+  onSaveContent, onUpdateStructure, onGenerateStructure, isLoading, streamingContent,
+  error, pseudonyms = [],
 }) => {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -134,7 +137,7 @@ const ResponseEditor: React.FC<Props> = ({
 
   const getStatusColor = (status: string) => STATUS_COLORS[status] || STATUS_COLORS.draft;
 
-  const getProgress = () => {
+  const getStats = () => {
     let total = 0;
     let written = 0;
     const count = (chs: Chapter[]) => {
@@ -145,8 +148,11 @@ const ResponseEditor: React.FC<Props> = ({
       }
     };
     count(chapters);
-    return total > 0 ? Math.round((written / total) * 100) : 0;
+    return { total, written, unwritten: total - written };
   };
+
+  const stats = getStats();
+  const getProgress = () => stats.total > 0 ? Math.round((stats.written / stats.total) * 100) : 0;
 
   // ── Structure management ────────────────────────────────────────────
 
@@ -378,13 +384,47 @@ const ResponseEditor: React.FC<Props> = ({
           ))}
         </div>
 
-        {/* Progress */}
+        {/* Progress + bulk actions */}
         <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--divider-color, #e0e0e0)' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 4 }}>PROGRESSION</div>
           <div style={styles.progressBar}>
             <div style={{ ...styles.progressFill, width: `${getProgress()}%`, backgroundColor: '#4caf50' }} />
           </div>
-          <div style={{ fontSize: 10, color: '#888', textAlign: 'right' as const }}>{getProgress()}%</div>
+          <div style={{ fontSize: 10, color: '#888', textAlign: 'right' as const, marginBottom: 6 }}>
+            {stats.written}/{stats.total} chapitres · {getProgress()}%
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {stats.unwritten > 0 && (
+              <button
+                style={{
+                  flex: 1, padding: '5px 4px', fontSize: 10, fontWeight: 600,
+                  border: 'none', borderRadius: 4, cursor: isLoading ? 'not-allowed' : 'pointer',
+                  backgroundColor: '#1976d2', color: '#fff',
+                  opacity: isLoading ? 0.5 : 1,
+                }}
+                onClick={onWriteAll}
+                disabled={isLoading}
+                title={`Rédiger les ${stats.unwritten} chapitres non rédigés`}
+              >
+                Rédiger tout ({stats.unwritten})
+              </button>
+            )}
+            {stats.written > 0 && (
+              <button
+                style={{
+                  flex: 1, padding: '5px 4px', fontSize: 10, fontWeight: 600,
+                  border: 'none', borderRadius: 4, cursor: isLoading ? 'not-allowed' : 'pointer',
+                  backgroundColor: '#7b1fa2', color: '#fff',
+                  opacity: isLoading ? 0.5 : 1,
+                }}
+                onClick={onImproveAll}
+                disabled={isLoading}
+                title={`Améliorer les ${stats.written} chapitres rédigés`}
+              >
+                Améliorer tout ({stats.written})
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Chapter list */}
