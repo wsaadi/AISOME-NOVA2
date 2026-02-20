@@ -523,6 +523,20 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
         @keyframes spin { to { transform: rotate(360deg); } }
         .ta-resize-handle { background: transparent; transition: background 0.15s; }
         .ta-resize-handle:hover { background: var(--ta-primary, #1976d2); }
+        .ta-nav-btn { outline: none !important; }
+        .ta-nav-btn:focus,
+        .ta-nav-btn:active,
+        .ta-nav-btn:focus-visible { background: transparent !important; outline: none !important; }
+        .ta-nav-btn.ta-active:focus,
+        .ta-nav-btn.ta-active:active,
+        .ta-nav-btn.ta-active:focus-visible { background: ${isDark ? 'rgba(129,140,248,0.10)' : 'rgba(25,118,210,0.06)'} !important; }
+        .ta-ch-btn { outline: none !important; }
+        .ta-ch-btn:focus,
+        .ta-ch-btn:active,
+        .ta-ch-btn:focus-visible { background: transparent !important; outline: none !important; }
+        .ta-ch-btn.ta-active:focus,
+        .ta-ch-btn.ta-active:active,
+        .ta-ch-btn.ta-active:focus-visible { background: ${isDark ? 'rgba(129,140,248,0.10)' : 'rgba(25,118,210,0.06)'} !important; }
       `}</style>
 
       {/* Left Sidebar */}
@@ -538,6 +552,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
             return (
               <button
                 key={item.id}
+                className={`ta-nav-btn${activeView === item.id ? ' ta-active' : ''}`}
                 style={{
                   ...styles.navItem,
                   ...(activeView === item.id ? styles.navItemActive : {}),

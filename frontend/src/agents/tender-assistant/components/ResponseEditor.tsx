@@ -388,6 +388,7 @@ const ResponseEditor: React.FC<Props> = ({
           ] as [ViewMode, string][]).map(([mode, label]) => (
             <button
               key={mode}
+              className="ta-nav-btn"
               onClick={() => setViewMode(mode)}
               style={{
                 flex: 1,
@@ -399,6 +400,7 @@ const ResponseEditor: React.FC<Props> = ({
                 border: 'none',
                 borderBottom: viewMode === mode ? '2px solid var(--ta-primary, #1976d2)' : '2px solid transparent',
                 cursor: 'pointer',
+                outline: 'none',
               }}
             >
               {label}
@@ -454,6 +456,7 @@ const ResponseEditor: React.FC<Props> = ({
           {chapters.map((ch, ci) => (
             <React.Fragment key={ch.id}>
               <button
+                className={`ta-ch-btn${selectedChapterId === ch.id && viewMode === 'editor' ? ' ta-active' : ''}`}
                 style={{
                   ...styles.chapterItem,
                   ...(selectedChapterId === ch.id && viewMode === 'editor' ? styles.chapterItemActive : {}),
@@ -472,6 +475,7 @@ const ResponseEditor: React.FC<Props> = ({
               {(ch.sub_chapters || []).map(sub => (
                 <button
                   key={sub.id}
+                  className={`ta-ch-btn${selectedChapterId === sub.id && viewMode === 'editor' ? ' ta-active' : ''}`}
                   style={{
                     ...styles.chapterItem,
                     ...styles.subChapter,

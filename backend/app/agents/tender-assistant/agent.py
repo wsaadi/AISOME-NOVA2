@@ -198,8 +198,8 @@ class TenderAssistantAgent(BaseAgent):
             stripped = stripped[len(intro_pattern.group(1)):]
         # Ensure blank lines before headings (required for proper markdown parsing)
         stripped = re.sub(r"([^\n])\n(#{1,4}\s)", r"\1\n\n\2", stripped)
-        # Ensure blank lines before table blocks
-        stripped = re.sub(r"([^\n])\n(\|)", r"\1\n\n\2", stripped)
+        # Ensure blank lines before table blocks (only before first | row, not between table rows)
+        stripped = re.sub(r"(^|\n)([^\n|][^\n]*)\n(\|)", r"\1\2\n\n\3", stripped)
         # Ensure blank lines before/after horizontal rules
         stripped = re.sub(r"([^\n])\n(---+)\n", r"\1\n\n\2\n\n", stripped)
         # Normalize Windows line endings
