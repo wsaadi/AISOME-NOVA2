@@ -28,6 +28,8 @@ interface Props {
   error?: string | null;
 }
 
+type ViewMode = 'editor' | 'full-preview' | 'structure';
+
 const ResponseEditor: React.FC<Props> = ({
   chapters, onWriteChapter, onImproveChapter, onSaveContent, onUpdateStructure,
   onGenerateStructure, isLoading, streamingContent, error,
@@ -36,27 +38,29 @@ const ResponseEditor: React.FC<Props> = ({
   const [editMode, setEditMode] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [aiInstructions, setAiInstructions] = useState('');
-  const [previewMode, setPreviewMode] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('editor');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Structure editing state
+  const [editingChapter, setEditingChapter] = useState<{ id: string; field: 'title' | 'description'; parentId?: string } | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+  const [addingChapter, setAddingChapter] = useState<{ parentId?: string } | null>(null);
+  const [newChapterTitle, setNewChapterTitle] = useState('');
 
   const selectedChapter = selectedChapterId
     ? findChapter(chapters, selectedChapterId)
     : null;
 
-  // When streaming content arrives, switch to preview mode to show it
   useEffect(() => {
     if (streamingContent && selectedChapterId) {
       setEditMode(false);
-      setPreviewMode(true);
     }
   }, [streamingContent, selectedChapterId]);
 
-  // Switch to edit mode with current content
   const startEditing = useCallback(() => {
     if (selectedChapter) {
       setEditContent(selectedChapter.content || '');
       setEditMode(true);
-      setPreviewMode(false);
     }
   }, [selectedChapter]);
 
@@ -65,12 +69,10 @@ const ResponseEditor: React.FC<Props> = ({
       onSaveContent(selectedChapterId, editContent);
     }
     setEditMode(false);
-    setPreviewMode(true);
   }, [selectedChapterId, editContent, selectedChapter, onSaveContent]);
 
   const cancelEdit = useCallback(() => {
     setEditMode(false);
-    setPreviewMode(true);
   }, []);
 
   const handleWriteChapter = () => {
@@ -102,6 +104,161 @@ const ResponseEditor: React.FC<Props> = ({
     count(chapters);
     return total > 0 ? Math.round((written / total) * 100) : 0;
   };
+
+  // ── Structure management ────────────────────────────────────────────
+
+  const addChapter = (parentId?: string) => {
+    if (!newChapterTitle.trim()) return;
+    let updated: Chapter[];
+    if (!parentId) {
+      const num = String(chapters.length + 1);
+      updated = [...chapters, {
+        id: `ch-${Date.now()}`,
+        number: num,
+        title: newChapterTitle.trim(),
+        description: '',
+        requirements_covered: [],
+        key_points: [],
+        estimated_pages: 2,
+        content: '',
+        status: 'draft',
+        sub_chapters: [],
+      }];
+    } else {
+      updated = chapters.map(ch => {
+        if (ch.id === parentId) {
+          const subNum = `${ch.number}.${(ch.sub_chapters || []).length + 1}`;
+          return {
+            ...ch,
+            sub_chapters: [...(ch.sub_chapters || []), {
+              id: `sub-${Date.now()}`,
+              number: subNum,
+              title: newChapterTitle.trim(),
+              description: '',
+              requirements_covered: [],
+              key_points: [],
+              estimated_pages: 1,
+              content: '',
+              status: 'draft',
+              sub_chapters: [],
+            }],
+          };
+        }
+        return ch;
+      });
+    }
+    onUpdateStructure(updated);
+    setAddingChapter(null);
+    setNewChapterTitle('');
+  };
+
+  const deleteChapter = (id: string) => {
+    // Try top-level first
+    let found = chapters.some(ch => ch.id === id);
+    let updated: Chapter[];
+    if (found) {
+      updated = chapters.filter(ch => ch.id !== id).map((ch, i) => ({
+        ...ch,
+        number: String(i + 1),
+        sub_chapters: (ch.sub_chapters || []).map((sub, j) => ({
+          ...sub,
+          number: `${i + 1}.${j + 1}`,
+        })),
+      }));
+    } else {
+      updated = chapters.map((ch, ci) => ({
+        ...ch,
+        sub_chapters: (ch.sub_chapters || [])
+          .filter(sub => sub.id !== id)
+          .map((sub, j) => ({ ...sub, number: `${ch.number}.${j + 1}` })),
+      }));
+    }
+    onUpdateStructure(updated);
+    if (selectedChapterId === id) setSelectedChapterId(null);
+  };
+
+  const saveChapterField = () => {
+    if (!editingChapter || !editingValue.trim()) {
+      setEditingChapter(null);
+      return;
+    }
+    const updated = chapters.map(ch => {
+      if (ch.id === editingChapter.id) {
+        return { ...ch, [editingChapter.field]: editingValue.trim() };
+      }
+      return {
+        ...ch,
+        sub_chapters: (ch.sub_chapters || []).map(sub =>
+          sub.id === editingChapter.id
+            ? { ...sub, [editingChapter.field]: editingValue.trim() }
+            : sub
+        ),
+      };
+    });
+    onUpdateStructure(updated);
+    setEditingChapter(null);
+    setEditingValue('');
+  };
+
+  const moveChapter = (id: string, direction: 'up' | 'down') => {
+    const idx = chapters.findIndex(ch => ch.id === id);
+    if (idx === -1) {
+      // Sub-chapter move
+      const updated = chapters.map(ch => {
+        const subIdx = (ch.sub_chapters || []).findIndex(s => s.id === id);
+        if (subIdx === -1) return ch;
+        const subs = [...ch.sub_chapters];
+        const swapIdx = direction === 'up' ? subIdx - 1 : subIdx + 1;
+        if (swapIdx < 0 || swapIdx >= subs.length) return ch;
+        [subs[subIdx], subs[swapIdx]] = [subs[swapIdx], subs[subIdx]];
+        return {
+          ...ch,
+          sub_chapters: subs.map((s, j) => ({ ...s, number: `${ch.number}.${j + 1}` })),
+        };
+      });
+      onUpdateStructure(updated);
+      return;
+    }
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= chapters.length) return;
+    const updated = [...chapters];
+    [updated[idx], updated[swapIdx]] = [updated[swapIdx], updated[idx]];
+    onUpdateStructure(updated.map((ch, i) => ({
+      ...ch,
+      number: String(i + 1),
+      sub_chapters: (ch.sub_chapters || []).map((sub, j) => ({
+        ...sub,
+        number: `${i + 1}.${j + 1}`,
+      })),
+    })));
+  };
+
+  // ── Full document builder ───────────────────────────────────────────
+
+  const buildFullDocument = (): string => {
+    const parts: string[] = [];
+    for (const ch of chapters) {
+      parts.push(`# ${ch.number}. ${ch.title}`);
+      if (ch.content) {
+        parts.push(ch.content);
+      } else {
+        parts.push('*Contenu non rédigé*');
+      }
+      parts.push('');
+      for (const sub of ch.sub_chapters || []) {
+        parts.push(`## ${sub.number}. ${sub.title}`);
+        if (sub.content) {
+          parts.push(sub.content);
+        } else {
+          parts.push('*Contenu non rédigé*');
+        }
+        parts.push('');
+      }
+    }
+    return parts.join('\n\n');
+  };
+
+  // ── Empty state ─────────────────────────────────────────────────────
 
   if (chapters.length === 0) {
     return (
@@ -145,10 +302,40 @@ const ResponseEditor: React.FC<Props> = ({
     );
   }
 
+  // ── Main layout ─────────────────────────────────────────────────────
+
   return (
     <div style={{ ...styles.editorLayout, padding: 0, height: '100%' }}>
       {/* Chapter tree */}
       <div style={styles.chapterTree}>
+        {/* View mode tabs */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--divider-color, #e0e0e0)' }}>
+          {([
+            ['editor', 'Rédaction'],
+            ['full-preview', 'Aperçu'],
+            ['structure', 'Structure'],
+          ] as [ViewMode, string][]).map(([mode, label]) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              style={{
+                flex: 1,
+                padding: '8px 4px',
+                fontSize: 10,
+                fontWeight: viewMode === mode ? 700 : 500,
+                color: viewMode === mode ? 'var(--primary-color, #1976d2)' : '#888',
+                background: viewMode === mode ? 'var(--primary-bg, rgba(25,118,210,0.06))' : 'none',
+                border: 'none',
+                borderBottom: viewMode === mode ? '2px solid var(--primary-color, #1976d2)' : '2px solid transparent',
+                cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Progress */}
         <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--divider-color, #e0e0e0)' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 4 }}>PROGRESSION</div>
           <div style={styles.progressBar}>
@@ -157,55 +344,84 @@ const ResponseEditor: React.FC<Props> = ({
           <div style={{ fontSize: 10, color: '#888', textAlign: 'right' as const }}>{getProgress()}%</div>
         </div>
 
-        {chapters.map(ch => (
-          <React.Fragment key={ch.id}>
-            <button
-              style={{
-                ...styles.chapterItem,
-                ...(selectedChapterId === ch.id ? styles.chapterItemActive : {}),
-              }}
-              onClick={() => {
-                setSelectedChapterId(ch.id);
-                setEditMode(false);
-                setPreviewMode(true);
-              }}
-            >
-              <span style={styles.chapterNumber}>{ch.number}</span>
-              <span style={styles.chapterTitle} title={ch.title}>{ch.title}</span>
-              <span style={{ ...styles.chapterStatus, backgroundColor: getStatusColor(ch.status || (ch.content ? 'written' : 'draft')) }} />
-            </button>
-
-            {(ch.sub_chapters || []).map(sub => (
+        {/* Chapter list */}
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          {chapters.map((ch, ci) => (
+            <React.Fragment key={ch.id}>
               <button
-                key={sub.id}
                 style={{
                   ...styles.chapterItem,
-                  ...styles.subChapter,
-                  ...(selectedChapterId === sub.id ? styles.chapterItemActive : {}),
+                  ...(selectedChapterId === ch.id && viewMode === 'editor' ? styles.chapterItemActive : {}),
                 }}
                 onClick={() => {
-                  setSelectedChapterId(sub.id);
+                  setSelectedChapterId(ch.id);
                   setEditMode(false);
-                  setPreviewMode(true);
+                  if (viewMode !== 'editor') setViewMode('editor');
                 }}
               >
-                <span style={{ ...styles.chapterNumber, fontSize: 10 }}>{sub.number}</span>
-                <span style={styles.chapterTitle} title={sub.title}>{sub.title}</span>
-                <span style={{ ...styles.chapterStatus, backgroundColor: getStatusColor(sub.status || (sub.content ? 'written' : 'draft')) }} />
+                <span style={styles.chapterNumber}>{ch.number}</span>
+                <span style={styles.chapterTitle} title={ch.title}>{ch.title}</span>
+                <span style={{ ...styles.chapterStatus, backgroundColor: getStatusColor(ch.status || (ch.content ? 'written' : 'draft')) }} />
               </button>
-            ))}
-          </React.Fragment>
-        ))}
+
+              {(ch.sub_chapters || []).map(sub => (
+                <button
+                  key={sub.id}
+                  style={{
+                    ...styles.chapterItem,
+                    ...styles.subChapter,
+                    ...(selectedChapterId === sub.id && viewMode === 'editor' ? styles.chapterItemActive : {}),
+                  }}
+                  onClick={() => {
+                    setSelectedChapterId(sub.id);
+                    setEditMode(false);
+                    if (viewMode !== 'editor') setViewMode('editor');
+                  }}
+                >
+                  <span style={{ ...styles.chapterNumber, fontSize: 10 }}>{sub.number}</span>
+                  <span style={styles.chapterTitle} title={sub.title}>{sub.title}</span>
+                  <span style={{ ...styles.chapterStatus, backgroundColor: getStatusColor(sub.status || (sub.content ? 'written' : 'draft')) }} />
+                </button>
+              ))}
+            </React.Fragment>
+          ))}
+        </div>
       </div>
 
-      {/* Editor area */}
+      {/* ── Right panel: depends on viewMode ─────────────────────── */}
       <div style={styles.editorArea}>
-        {!selectedChapter ? (
+        {viewMode === 'full-preview' && (
+          <FullPreviewPanel chapters={chapters} buildFullDocument={buildFullDocument} />
+        )}
+
+        {viewMode === 'structure' && (
+          <StructurePanel
+            chapters={chapters}
+            editingChapter={editingChapter}
+            editingValue={editingValue}
+            addingChapter={addingChapter}
+            newChapterTitle={newChapterTitle}
+            onStartEditing={(id, field, value) => { setEditingChapter({ id, field }); setEditingValue(value); }}
+            onEditingValueChange={setEditingValue}
+            onSaveField={saveChapterField}
+            onCancelEditing={() => setEditingChapter(null)}
+            onAddChapter={addChapter}
+            onStartAdding={(parentId) => { setAddingChapter({ parentId }); setNewChapterTitle(''); }}
+            onCancelAdding={() => setAddingChapter(null)}
+            onNewTitleChange={setNewChapterTitle}
+            onDelete={deleteChapter}
+            onMove={moveChapter}
+          />
+        )}
+
+        {viewMode === 'editor' && !selectedChapter && (
           <div style={styles.editorPlaceholder}>
             <div style={{ fontSize: 32, opacity: 0.3 }}>📝</div>
             <p>Sélectionnez un chapitre pour commencer la rédaction</p>
           </div>
-        ) : (
+        )}
+
+        {viewMode === 'editor' && selectedChapter && (
           <>
             {/* Chapter header */}
             <div style={styles.editorHeader}>
@@ -232,7 +448,7 @@ const ResponseEditor: React.FC<Props> = ({
                     style={{ ...styles.btn, ...styles.btnSecondary, ...styles.btnSmall }}
                     onClick={startEditing}
                   >
-                    Éditer manuellement
+                    Éditer
                   </button>
                   <button
                     style={{
@@ -242,7 +458,7 @@ const ResponseEditor: React.FC<Props> = ({
                     onClick={handleWriteChapter}
                     disabled={isLoading}
                   >
-                    {selectedChapter.content ? 'Re-générer avec IA' : 'Générer avec IA'}
+                    {selectedChapter.content ? 'Re-générer' : 'Générer avec IA'}
                   </button>
                   {selectedChapter.content && (
                     <button
@@ -254,13 +470,13 @@ const ResponseEditor: React.FC<Props> = ({
                       onClick={handleImproveChapter}
                       disabled={isLoading || !aiInstructions.trim()}
                     >
-                      Améliorer avec IA
+                      Améliorer
                     </button>
                   )}
                   <div style={{ flex: 1 }} />
                   <input
                     style={{ ...styles.inputField, maxWidth: 350, fontSize: 11 }}
-                    placeholder="Instructions pour l'IA (ex: ajouter plus de détails sur...)"
+                    placeholder="Instructions pour l'IA..."
                     value={aiInstructions}
                     onChange={e => setAiInstructions(e.target.value)}
                     onKeyDown={e => {
@@ -318,7 +534,7 @@ const ResponseEditor: React.FC<Props> = ({
                 <div style={styles.editorPlaceholder}>
                   <p>Aucun contenu rédigé pour ce chapitre.</p>
                   <p style={{ fontSize: 12, color: '#aaa' }}>
-                    Utilisez "Générer avec IA" ou "Éditer manuellement" pour commencer.
+                    Utilisez "Générer avec IA" ou "Éditer" pour commencer.
                   </p>
                 </div>
               )}
@@ -329,6 +545,291 @@ const ResponseEditor: React.FC<Props> = ({
     </div>
   );
 };
+
+// ═══════════════════════════════════════════════════════════════════════
+// Full Preview Panel
+// ═══════════════════════════════════════════════════════════════════════
+
+const FullPreviewPanel: React.FC<{
+  chapters: Chapter[];
+  buildFullDocument: () => string;
+}> = ({ chapters, buildFullDocument }) => {
+  const fullDoc = buildFullDocument();
+  const wordCount = fullDoc.split(/\s+/).filter(Boolean).length;
+  const pageEstimate = Math.ceil(wordCount / 300);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' as const, height: '100%' }}>
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--divider-color, #e0e0e0)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexShrink: 0,
+      }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--text-primary, #333)' }}>
+          Aperçu du document complet
+        </h3>
+        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#888' }}>
+          <span>{chapters.length} chapitres</span>
+          <span>{wordCount} mots</span>
+          <span>~{pageEstimate} pages</span>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: '20px 32px' }}>
+        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+          <MarkdownView content={fullDoc} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// Structure Panel
+// ═══════════════════════════════════════════════════════════════════════
+
+interface StructurePanelProps {
+  chapters: Chapter[];
+  editingChapter: { id: string; field: 'title' | 'description' } | null;
+  editingValue: string;
+  addingChapter: { parentId?: string } | null;
+  newChapterTitle: string;
+  onStartEditing: (id: string, field: 'title' | 'description', value: string) => void;
+  onEditingValueChange: (val: string) => void;
+  onSaveField: () => void;
+  onCancelEditing: () => void;
+  onAddChapter: (parentId?: string) => void;
+  onStartAdding: (parentId?: string) => void;
+  onCancelAdding: () => void;
+  onNewTitleChange: (val: string) => void;
+  onDelete: (id: string) => void;
+  onMove: (id: string, dir: 'up' | 'down') => void;
+}
+
+const StructurePanel: React.FC<StructurePanelProps> = ({
+  chapters, editingChapter, editingValue, addingChapter, newChapterTitle,
+  onStartEditing, onEditingValueChange, onSaveField, onCancelEditing,
+  onAddChapter, onStartAdding, onCancelAdding, onNewTitleChange,
+  onDelete, onMove,
+}) => {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' as const, height: '100%' }}>
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--divider-color, #e0e0e0)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexShrink: 0,
+      }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
+          Gestion de la structure
+        </h3>
+        <button
+          style={{ ...styles.btn, ...styles.btnPrimary, ...styles.btnSmall }}
+          onClick={() => onStartAdding(undefined)}
+        >
+          + Ajouter un chapitre
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+        {/* Add top-level form */}
+        {addingChapter && !addingChapter.parentId && (
+          <AddChapterForm
+            value={newChapterTitle}
+            onChange={onNewTitleChange}
+            onConfirm={() => onAddChapter(undefined)}
+            onCancel={onCancelAdding}
+            placeholder="Titre du nouveau chapitre"
+          />
+        )}
+
+        {chapters.map((ch, ci) => (
+          <div key={ch.id} style={{
+            marginBottom: 12,
+            border: '1px solid var(--divider-color, #e0e0e0)',
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}>
+            {/* Chapter header */}
+            <div style={{
+              padding: '10px 14px',
+              backgroundColor: 'var(--bg-color, #fafafa)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <span style={{ fontWeight: 700, color: 'var(--primary-color, #1976d2)', fontSize: 13, minWidth: 24 }}>
+                {ch.number}
+              </span>
+
+              {editingChapter?.id === ch.id && editingChapter.field === 'title' ? (
+                <input
+                  autoFocus
+                  style={{ ...styles.inputField, fontSize: 13, fontWeight: 600, flex: 1 }}
+                  value={editingValue}
+                  onChange={e => onEditingValueChange(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') onSaveField(); if (e.key === 'Escape') onCancelEditing(); }}
+                  onBlur={onSaveField}
+                />
+              ) : (
+                <span
+                  style={{ flex: 1, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  onClick={() => onStartEditing(ch.id, 'title', ch.title)}
+                  title="Cliquer pour modifier"
+                >
+                  {ch.title}
+                </span>
+              )}
+
+              <div style={{ display: 'flex', gap: 2 }}>
+                <IconBtn title="Monter" onClick={() => onMove(ch.id, 'up')} disabled={ci === 0}>&#x25B2;</IconBtn>
+                <IconBtn title="Descendre" onClick={() => onMove(ch.id, 'down')} disabled={ci === chapters.length - 1}>&#x25BC;</IconBtn>
+                <IconBtn title="Ajouter sous-chapitre" onClick={() => onStartAdding(ch.id)}>+</IconBtn>
+                <IconBtn title="Supprimer" onClick={() => { if (window.confirm(`Supprimer "${ch.title}" ?`)) onDelete(ch.id); }} danger>&#x2715;</IconBtn>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div style={{ padding: '6px 14px 6px 46px' }}>
+              {editingChapter?.id === ch.id && editingChapter.field === 'description' ? (
+                <input
+                  autoFocus
+                  style={{ ...styles.inputField, fontSize: 11, width: '100%' }}
+                  value={editingValue}
+                  onChange={e => onEditingValueChange(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') onSaveField(); if (e.key === 'Escape') onCancelEditing(); }}
+                  onBlur={onSaveField}
+                />
+              ) : (
+                <p
+                  style={{ margin: 0, fontSize: 11, color: '#888', cursor: 'pointer', minHeight: 16 }}
+                  onClick={() => onStartEditing(ch.id, 'description', ch.description || '')}
+                  title="Cliquer pour modifier la description"
+                >
+                  {ch.description || 'Ajouter une description...'}
+                </p>
+              )}
+            </div>
+
+            {/* Sub-chapters */}
+            {(ch.sub_chapters || []).map((sub, si) => (
+              <div key={sub.id} style={{
+                padding: '8px 14px 8px 46px',
+                borderTop: '1px solid var(--divider-color, #f0f0f0)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <span style={{ fontWeight: 600, color: 'var(--primary-color, #1976d2)', fontSize: 11, minWidth: 32 }}>
+                  {sub.number}
+                </span>
+                {editingChapter?.id === sub.id && editingChapter.field === 'title' ? (
+                  <input
+                    autoFocus
+                    style={{ ...styles.inputField, fontSize: 12, flex: 1 }}
+                    value={editingValue}
+                    onChange={e => onEditingValueChange(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') onSaveField(); if (e.key === 'Escape') onCancelEditing(); }}
+                    onBlur={onSaveField}
+                  />
+                ) : (
+                  <span
+                    style={{ flex: 1, fontSize: 12, cursor: 'pointer' }}
+                    onClick={() => onStartEditing(sub.id, 'title', sub.title)}
+                    title="Cliquer pour modifier"
+                  >
+                    {sub.title}
+                  </span>
+                )}
+                <div style={{ display: 'flex', gap: 2 }}>
+                  <IconBtn title="Monter" onClick={() => onMove(sub.id, 'up')} disabled={si === 0}>&#x25B2;</IconBtn>
+                  <IconBtn title="Descendre" onClick={() => onMove(sub.id, 'down')} disabled={si === (ch.sub_chapters || []).length - 1}>&#x25BC;</IconBtn>
+                  <IconBtn title="Supprimer" onClick={() => { if (window.confirm(`Supprimer "${sub.title}" ?`)) onDelete(sub.id); }} danger>&#x2715;</IconBtn>
+                </div>
+              </div>
+            ))}
+
+            {/* Add sub-chapter form */}
+            {addingChapter?.parentId === ch.id && (
+              <div style={{ padding: '8px 14px 8px 46px', borderTop: '1px solid var(--divider-color, #f0f0f0)' }}>
+                <AddChapterForm
+                  value={newChapterTitle}
+                  onChange={onNewTitleChange}
+                  onConfirm={() => onAddChapter(ch.id)}
+                  onCancel={onCancelAdding}
+                  placeholder="Titre du sous-chapitre"
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// Small reusable components
+// ═══════════════════════════════════════════════════════════════════════
+
+const IconBtn: React.FC<{
+  onClick: () => void;
+  title: string;
+  disabled?: boolean;
+  danger?: boolean;
+  children: React.ReactNode;
+}> = ({ onClick, title, disabled, danger, children }) => (
+  <button
+    title={title}
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      width: 22,
+      height: 22,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      border: 'none',
+      borderRadius: 4,
+      background: 'none',
+      cursor: disabled ? 'default' : 'pointer',
+      fontSize: 11,
+      color: danger ? '#d32f2f' : '#888',
+      opacity: disabled ? 0.3 : 1,
+    }}
+  >
+    {children}
+  </button>
+);
+
+const AddChapterForm: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  placeholder: string;
+}> = ({ value, onChange, onConfirm, onCancel, placeholder }) => (
+  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10 }}>
+    <input
+      autoFocus
+      style={{ ...styles.inputField, fontSize: 12, flex: 1 }}
+      placeholder={placeholder}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter') onConfirm(); if (e.key === 'Escape') onCancel(); }}
+    />
+    <button style={{ ...styles.btn, ...styles.btnPrimary, ...styles.btnSmall }} onClick={onConfirm}>OK</button>
+    <button style={{ ...styles.btn, ...styles.btnSecondary, ...styles.btnSmall }} onClick={onCancel}>Annuler</button>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════
 
 function findChapter(chapters: Chapter[], id: string): Chapter | null {
   for (const ch of chapters) {
