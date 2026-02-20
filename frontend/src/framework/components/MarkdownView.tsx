@@ -130,8 +130,14 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
 };
 
 export const MarkdownView: React.FC<MarkdownViewProps> = ({ content }) => {
-  // Pre-process: convert HTML <br> tags to markdown line breaks
-  const processed = content.replace(/<br\s*\/?>/gi, '  \n');
+  // Pre-process: strip wrapping code fences (LLM sometimes wraps markdown in ```markdown ... ```)
+  let processed = content.trim();
+  const fenceMatch = processed.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)```\s*$/);
+  if (fenceMatch) {
+    processed = fenceMatch[1].trim();
+  }
+  // Convert HTML <br> tags to markdown line breaks
+  processed = processed.replace(/<br\s*\/?>/gi, '  \n');
 
   return (
     <Box sx={{ lineHeight: 1.7, fontSize: '0.9rem', ...markdownStyles }}>

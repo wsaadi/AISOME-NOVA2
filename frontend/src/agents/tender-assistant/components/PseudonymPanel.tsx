@@ -20,7 +20,9 @@ const CATEGORIES = [
   { value: 'person', label: 'Personne' },
   { value: 'project', label: 'Projet' },
   { value: 'client', label: 'Client' },
+  { value: 'reference', label: 'Référence' },
   { value: 'location', label: 'Lieu' },
+  { value: 'financial', label: 'Financier' },
   { value: 'other', label: 'Autre' },
 ];
 
@@ -29,7 +31,9 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   person: { bg: '#f3e5f5', text: '#7b1fa2' },
   project: { bg: '#e8f5e9', text: '#2e7d32' },
   client: { bg: '#fff3e0', text: '#e65100' },
+  reference: { bg: '#e0f7fa', text: '#00695c' },
   location: { bg: '#fce4ec', text: '#c62828' },
+  financial: { bg: '#fff9c4', text: '#f57f17' },
   other: { bg: '#f5f5f5', text: '#616161' },
 };
 
