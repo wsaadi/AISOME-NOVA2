@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTheme } from '@mui/material/styles';
 import { AgentViewProps } from 'framework/types';
 import { ChatPanel } from 'framework/components';
 import { useAgent, useAgentStorage } from 'framework/hooks';
@@ -86,6 +87,20 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
     progress, progressMessage, sessionRestored, error,
   } = useAgent(agent.slug, sessionId, { workspaceId });
   const storage = useAgentStorage(agent.slug, { workspaceId });
+  const muiTheme = useTheme();
+  const isDark = muiTheme.palette.mode === 'dark';
+
+  // Dark-mode CSS variable overrides (applied on the root div)
+  const darkVars: React.CSSProperties = isDark ? {
+    '--ta-bg': '#0F172A',
+    '--ta-bg-alt': '#1E293B',
+    '--ta-surface': '#1a2236',
+    '--ta-text': '#F1F5F9',
+    '--ta-text-dim': '#94A3B8',
+    '--ta-border': '#334155',
+    '--ta-primary': '#818CF8',
+    '--ta-primary-bg': 'rgba(129,140,248,0.10)',
+  } as React.CSSProperties : {};
 
   // -- State --
   const [activeView, setActiveView] = useState<ViewId>('documents');
@@ -476,6 +491,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
     return (
       <div style={{
         ...styles.root,
+        ...darkVars,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -485,15 +501,15 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
         <div style={{
           width: 48,
           height: 48,
-          border: '4px solid #e0e0e0',
-          borderTopColor: '#1976d2',
+          border: `4px solid var(--ta-border, #e0e0e0)`,
+          borderTopColor: 'var(--ta-primary, #1976d2)',
           borderRadius: '50%',
           animation: 'spin 0.8s linear infinite',
         }} />
-        <p style={{ fontSize: 15, fontWeight: 600, color: '#555' }}>
+        <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--ta-text, #555)' }}>
           Chargement de l'espace de travail...
         </p>
-        <p style={{ fontSize: 12, color: '#999' }}>
+        <p style={{ fontSize: 12, color: 'var(--ta-text-dim, #999)' }}>
           Récupération des documents, chapitres et analyses
         </p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -502,32 +518,9 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
   }
 
   return (
-    <div style={styles.root}>
-      {/* Dark-mode CSS variables */}
+    <div style={{ ...styles.root, ...darkVars }}>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        @media (prefers-color-scheme: dark) {
-          :root {
-            --ta-bg: #1e1e2e;
-            --ta-bg-alt: #262637;
-            --ta-surface: #232334;
-            --ta-text: #e0e0e8;
-            --ta-text-dim: #9ca3af;
-            --ta-border: #3a3a4e;
-            --ta-primary: #5c9cf5;
-            --ta-primary-bg: rgba(92,156,245,0.10);
-          }
-        }
-        [data-theme="dark"] {
-          --ta-bg: #1e1e2e;
-          --ta-bg-alt: #262637;
-          --ta-surface: #232334;
-          --ta-text: #e0e0e8;
-          --ta-text-dim: #9ca3af;
-          --ta-border: #3a3a4e;
-          --ta-primary: #5c9cf5;
-          --ta-primary-bg: rgba(92,156,245,0.10);
-        }
         .ta-resize-handle { background: transparent; transition: background 0.15s; }
         .ta-resize-handle:hover { background: var(--ta-primary, #1976d2); }
       `}</style>
