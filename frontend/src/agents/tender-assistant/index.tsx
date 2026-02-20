@@ -80,7 +80,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
 }) => {
   const {
     sendMessage, messages, isLoading, streamingContent,
-    progress, progressMessage, sessionRestored,
+    progress, progressMessage, sessionRestored, error,
   } = useAgent(agent.slug, sessionId, { workspaceId });
   const storage = useAgentStorage(agent.slug, { workspaceId });
 
@@ -536,6 +536,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               onGenerateStructure={handleGenerateStructure}
               isLoading={isLoading}
               streamingContent={streamingContent}
+              error={error}
             />
           )}
 

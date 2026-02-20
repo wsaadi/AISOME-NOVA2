@@ -25,11 +25,12 @@ interface Props {
   onGenerateStructure: () => void;
   isLoading: boolean;
   streamingContent: string;
+  error?: string | null;
 }
 
 const ResponseEditor: React.FC<Props> = ({
   chapters, onWriteChapter, onImproveChapter, onSaveContent, onUpdateStructure,
-  onGenerateStructure, isLoading, streamingContent,
+  onGenerateStructure, isLoading, streamingContent, error,
 }) => {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -112,6 +113,21 @@ const ResponseEditor: React.FC<Props> = ({
         <p style={{ fontSize: 12, color: '#999', marginBottom: 16 }}>
           Générez automatiquement la structure des chapitres à partir de vos documents analysés.
         </p>
+        {error && (
+          <div style={{
+            padding: '10px 16px',
+            marginBottom: 16,
+            borderRadius: 6,
+            backgroundColor: '#ffebee',
+            border: '1px solid #ef9a9a',
+            color: '#c62828',
+            fontSize: 12,
+            maxWidth: 500,
+            textAlign: 'left' as const,
+          }}>
+            <strong>Erreur :</strong> {error}
+          </div>
+        )}
         <button
           style={{
             ...styles.btn,
