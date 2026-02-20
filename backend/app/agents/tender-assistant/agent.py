@@ -196,6 +196,17 @@ class TenderAssistantAgent(BaseAgent):
         )
         if intro_pattern:
             stripped = stripped[len(intro_pattern.group(1)):]
+        # Remove JSON metadata blocks (LLM sometimes appends structured JSON)
+        # Pattern: optional intro line + { "type": "chapter_content", ... }
+        stripped = re.sub(
+            r'\n*(?:Bloc JSON[^\n]*\n)?```(?:json)?\s*\n\s*\{[^{}]*"type"\s*:\s*"chapter_content"[^}]*(?:\{[^}]*\}[^}]*)*\}[^`]*```',
+            '', stripped, flags=re.DOTALL
+        )
+        # Also catch unformatted JSON blocks (no code fences)
+        stripped = re.sub(
+            r'\n+(?:Bloc JSON[^\n]*\n+)\s*\{[^{}]*"type"\s*:\s*"chapter_content"[\s\S]*$',
+            '', stripped
+        )
         # Ensure blank lines before headings (required for proper markdown parsing)
         stripped = re.sub(r"([^\n])\n(#{1,4}\s)", r"\1\n\n\2", stripped)
         # Ensure blank lines before table blocks (only before first | row, not between table rows)
@@ -204,7 +215,7 @@ class TenderAssistantAgent(BaseAgent):
         stripped = re.sub(r"([^\n])\n(---+)\n", r"\1\n\n\2\n\n", stripped)
         # Normalize Windows line endings
         stripped = stripped.replace("\r\n", "\n")
-        return stripped
+        return stripped.strip()
 
     async def _llm_chat(
         self, context: AgentContext, prompt: str,
@@ -970,7 +981,8 @@ CONSIGNES IMPORTANTES :
 4. Si aucune réponse précédente n'est disponible, rédige un contenu original complet.
 5. Utilise du markdown pour la mise en forme (titres, listes, tableaux, etc.).
 6. Sois concret, factuel et orienté solution.
-7. Ne commence PAS le contenu par un titre qui répète le nom du chapitre."""
+7. Ne commence PAS le contenu par un titre qui répète le nom du chapitre.
+8. Ne génère JAMAIS de bloc JSON structuré, de métadonnées ou de résumé technique. Retourne UNIQUEMENT le contenu markdown rédigé."""
 
         content = await self._llm_chat(
             context, prompt=write_prompt,
@@ -979,8 +991,9 @@ CONSIGNES IMPORTANTES :
             max_tokens=4096,
         )
 
-        # Update chapter content
-        self._update_chapter_content(chapters, chapter_id, content)
+        # Update chapter content (auto-apply pseudonyms)
+        pseudonyms = await self._get_pseudonyms(context)
+        self._update_chapter_content(chapters, chapter_id, content, pseudonyms)
         await self._save_chapters(context, chapters)
 
         context.set_progress(100, "Rédaction terminée")
@@ -1021,7 +1034,8 @@ DEMANDE DE L'UTILISATEUR :
 
 Améliore le contenu en tenant compte de la demande. Conserve la structure existante
 sauf si l'utilisateur demande explicitement de la modifier. Retourne le contenu complet
-amélioré (pas juste les modifications)."""
+amélioré (pas juste les modifications).
+Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEMENT le contenu markdown."""
 
         improved = await self._llm_chat(
             context, prompt=improve_prompt,
@@ -1030,7 +1044,8 @@ amélioré (pas juste les modifications)."""
             max_tokens=4096,
         )
 
-        self._update_chapter_content(chapters, chapter_id, improved)
+        pseudonyms = await self._get_pseudonyms(context)
+        self._update_chapter_content(chapters, chapter_id, improved, pseudonyms)
         await self._save_chapters(context, chapters)
 
         context.set_progress(100, "Chapitre amélioré")
@@ -1073,6 +1088,7 @@ amélioré (pas juste les modifications)."""
             )
 
         total = len(unwritten)
+        pseudonyms = await self._get_pseudonyms(context)
         context.set_progress(5, f"Rédaction de {total} chapitre(s)...")
 
         for idx, chapter in enumerate(unwritten):
@@ -1106,7 +1122,8 @@ CONSIGNES :
 1. CAPITALISE AU MAXIMUM sur le contenu de la réponse précédente si fourni.
 2. ENRICHIS avec les nouvelles exigences du nouvel AO.
 3. Utilise du markdown. Sois concret, factuel et orienté solution.
-4. Ne commence PAS par un titre qui répète le nom du chapitre."""
+4. Ne commence PAS par un titre qui répète le nom du chapitre.
+5. Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEMENT le contenu markdown du chapitre."""
 
             try:
                 content = await self._llm_chat(
@@ -1114,7 +1131,7 @@ CONSIGNES :
                     system_prompt=system_prompt,
                     temperature=0.5, max_tokens=4096,
                 )
-                self._update_chapter_content(chapters, chapter["id"], content)
+                self._update_chapter_content(chapters, chapter["id"], content, pseudonyms)
             except Exception as e:
                 logger.error(f"Failed to write chapter {chapter['title']}: {e}")
 
@@ -1159,6 +1176,7 @@ CONSIGNES :
             )
 
         total = len(written)
+        pseudonyms = await self._get_pseudonyms(context)
         context.set_progress(5, f"Amélioration de {total} chapitre(s)...")
 
         for idx, chapter in enumerate(written):
@@ -1196,7 +1214,8 @@ CONSIGNES D'AMÉLIORATION :
 5. Intègre les points d'amélioration identifiés ci-dessus.
 6. Conserve la structure globale sauf si elle peut être significativement améliorée.
 7. Retourne le contenu COMPLET amélioré (pas juste les modifications).
-8. Ne commence PAS par un titre qui répète le nom du chapitre."""
+8. Ne commence PAS par un titre qui répète le nom du chapitre.
+9. Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEMENT le contenu markdown."""
 
             try:
                 improved = await self._llm_chat(
@@ -1204,7 +1223,7 @@ CONSIGNES D'AMÉLIORATION :
                     system_prompt=system_prompt,
                     temperature=0.5, max_tokens=4096,
                 )
-                self._update_chapter_content(chapters, chapter["id"], improved)
+                self._update_chapter_content(chapters, chapter["id"], improved, pseudonyms)
             except Exception as e:
                 logger.error(f"Failed to improve chapter {chapter['title']}: {e}")
 
@@ -1229,8 +1248,15 @@ CONSIGNES D'AMÉLIORATION :
                     return sub
         return None
 
-    def _update_chapter_content(self, chapters: list[dict], chapter_id: str, content: str) -> None:
+    def _update_chapter_content(self, chapters: list[dict], chapter_id: str, content: str, pseudonyms: list[dict] | None = None) -> None:
         cleaned = self._clean_chapter_content(content)
+        # Auto-apply pseudonyms to new content
+        if pseudonyms:
+            for entry in pseudonyms:
+                real = entry.get("real", "")
+                placeholder = entry.get("placeholder", "")
+                if real and placeholder and real in cleaned:
+                    cleaned = cleaned.replace(real, placeholder)
         for ch in chapters:
             if ch["id"] == chapter_id:
                 ch["content"] = cleaned
@@ -1711,13 +1737,15 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
             placeholder = entry.get("placeholder", "")
             if not real or not placeholder:
                 continue
+            # Case-insensitive replacement
+            pattern = re.compile(re.escape(real), re.IGNORECASE)
             for ch in chapters:
-                if ch.get("content") and real in ch["content"]:
-                    ch["content"] = ch["content"].replace(real, placeholder)
+                if ch.get("content") and pattern.search(ch["content"]):
+                    ch["content"] = pattern.sub(placeholder, ch["content"])
                     total_replacements += 1
                 for sub in ch.get("sub_chapters", []):
-                    if sub.get("content") and real in sub["content"]:
-                        sub["content"] = sub["content"].replace(real, placeholder)
+                    if sub.get("content") and pattern.search(sub["content"]):
+                        sub["content"] = pattern.sub(placeholder, sub["content"])
                         total_replacements += 1
 
         if total_replacements > 0:
@@ -2166,11 +2194,13 @@ Contexte documentaire :
 
 IMPORTANT : Capitalise au maximum sur le contenu de la réponse précédente s'il est fourni.
 Reprends les formulations, arguments et données pertinentes, puis enrichis et adapte au nouvel AO.
-Ne commence PAS par un titre qui répète le nom du chapitre."""
+Ne commence PAS par un titre qui répète le nom du chapitre.
+Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEMENT le contenu markdown."""
             else:
                 prompt = f"""Améliore le chapitre {chapter['number']} - {chapter['title']}.
 Contenu actuel : {chapter.get('content', '')}
-Demande : {message.content}"""
+Demande : {message.content}
+IMPORTANT : Ne génère JAMAIS de bloc JSON ou de métadonnées. Retourne UNIQUEMENT le contenu markdown amélioré."""
 
             # Apply pseudonymization before streaming
             pseudonyms = await self._get_pseudonyms(context)
@@ -2186,7 +2216,7 @@ Demande : {message.content}"""
                 yield AgentResponseChunk(content=token)
 
             full_content = "".join(collected)
-            self._update_chapter_content(chapters, chapter_id, full_content)
+            self._update_chapter_content(chapters, chapter_id, full_content, pseudonyms)
             await self._save_chapters(context, chapters)
 
             yield AgentResponseChunk(
