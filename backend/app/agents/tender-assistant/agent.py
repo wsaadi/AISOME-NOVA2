@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import json
+import asyncio
 import logging
 import re
 import zipfile
@@ -1117,23 +1118,25 @@ DEMANDE DE L'UTILISATEUR :
         pseudonyms = await self._get_pseudonyms(context)
         context.set_progress(5, f"Rédaction de {total} chapitre(s)...")
 
-        for idx, chapter in enumerate(unwritten):
-            pct = int(5 + (idx / total) * 90)
-            context.set_progress(pct, f"Rédaction {idx+1}/{total} : {chapter['title']}...")
+        completed = 0
+        semaphore = asyncio.Semaphore(3)
 
-            relevant_texts = await self._gather_relevant_context(context, chapter, docs, analyses)
+        async def write_one(chapter):
+            nonlocal completed
+            async with semaphore:
+                relevant_texts = await self._gather_relevant_context(context, chapter, docs, analyses)
 
-            improvements_text = ""
-            related_improvements = [
-                imp for imp in improvements
-                if chapter["id"] in imp.get("linkedChapters", [])
-            ]
-            if related_improvements:
-                improvements_text = "\nPOINTS D'AMÉLIORATION LIÉS À CE CHAPITRE :\n"
-                for imp in related_improvements:
-                    improvements_text += f"- [{imp.get('priority', 'normal')}] {imp['title']}: {imp.get('description', '')}\n"
+                improvements_text = ""
+                related_improvements = [
+                    imp for imp in improvements
+                    if chapter["id"] in imp.get("linkedChapters", [])
+                ]
+                if related_improvements:
+                    improvements_text = "\nPOINTS D'AMÉLIORATION LIÉS À CE CHAPITRE :\n"
+                    for imp in related_improvements:
+                        improvements_text += f"- [{imp.get('priority', 'normal')}] {imp['title']}: {imp.get('description', '')}\n"
 
-            write_prompt = f"""Rédige le chapitre suivant pour un MÉMOIRE TECHNIQUE officiel de réponse à appel d'offres.
+                write_prompt = f"""Rédige le chapitre suivant pour un MÉMOIRE TECHNIQUE officiel de réponse à appel d'offres.
 
 CHAPITRE : {chapter['number']} - {chapter['title']}
 DESCRIPTION : {chapter.get('description', '')}
@@ -1154,15 +1157,20 @@ CONSIGNES IMPÉRATIVES :
 7. Ne commence PAS par un titre répétant le nom du chapitre.
 8. Ne génère JAMAIS de JSON ou métadonnées. UNIQUEMENT du markdown rédigé."""
 
-            try:
-                content = await self._llm_chat(
-                    context, prompt=write_prompt,
-                    system_prompt=system_prompt,
-                    temperature=0.5, max_tokens=8192,
-                )
-                self._update_chapter_content(chapters, chapter["id"], content, pseudonyms)
-            except Exception as e:
-                logger.error(f"Failed to write chapter {chapter['title']}: {e}")
+                try:
+                    content = await self._llm_chat(
+                        context, prompt=write_prompt,
+                        system_prompt=system_prompt,
+                        temperature=0.5, max_tokens=8192,
+                    )
+                    self._update_chapter_content(chapters, chapter["id"], content, pseudonyms)
+                except Exception as e:
+                    logger.error(f"Failed to write chapter {chapter['title']}: {e}")
+
+                completed += 1
+                context.set_progress(int(5 + (completed / total) * 90), f"Rédaction {completed}/{total} terminée...")
+
+        await asyncio.gather(*[write_one(ch) for ch in unwritten])
 
         await self._save_chapters(context, chapters)
         context.set_progress(100, "Rédaction complète terminée")
@@ -1208,23 +1216,25 @@ CONSIGNES IMPÉRATIVES :
         pseudonyms = await self._get_pseudonyms(context)
         context.set_progress(5, f"Amélioration de {total} chapitre(s)...")
 
-        for idx, chapter in enumerate(written):
-            pct = int(5 + (idx / total) * 90)
-            context.set_progress(pct, f"Amélioration {idx+1}/{total} : {chapter['title']}...")
+        completed = 0
+        semaphore = asyncio.Semaphore(3)
 
-            relevant_texts = await self._gather_relevant_context(context, chapter, docs, analyses)
+        async def improve_one(chapter):
+            nonlocal completed
+            async with semaphore:
+                relevant_texts = await self._gather_relevant_context(context, chapter, docs, analyses)
 
-            improvements_text = ""
-            related_improvements = [
-                imp for imp in improvements
-                if chapter["id"] in imp.get("linkedChapters", [])
-            ]
-            if related_improvements:
-                improvements_text = "\nPOINTS D'AMÉLIORATION À INTÉGRER :\n"
-                for imp in related_improvements:
-                    improvements_text += f"- [{imp.get('priority', 'normal')}] {imp['title']}: {imp.get('description', '')}\n"
+                improvements_text = ""
+                related_improvements = [
+                    imp for imp in improvements
+                    if chapter["id"] in imp.get("linkedChapters", [])
+                ]
+                if related_improvements:
+                    improvements_text = "\nPOINTS D'AMÉLIORATION À INTÉGRER :\n"
+                    for imp in related_improvements:
+                        improvements_text += f"- [{imp.get('priority', 'normal')}] {imp['title']}: {imp.get('description', '')}\n"
 
-            improve_prompt = f"""Améliore le chapitre suivant pour le rendre livrable dans un MÉMOIRE TECHNIQUE officiel.
+                improve_prompt = f"""Améliore le chapitre suivant pour le rendre livrable dans un MÉMOIRE TECHNIQUE officiel.
 
 CHAPITRE : {chapter['number']} - {chapter['title']}
 
@@ -1248,15 +1258,20 @@ CONSIGNES D'AMÉLIORATION IMPÉRATIVES :
 9. Ne commence PAS par un titre répétant le nom du chapitre.
 10. Ne génère JAMAIS de JSON ou métadonnées. UNIQUEMENT du markdown rédigé."""
 
-            try:
-                improved = await self._llm_chat(
-                    context, prompt=improve_prompt,
-                    system_prompt=system_prompt,
-                    temperature=0.5, max_tokens=8192,
-                )
-                self._update_chapter_content(chapters, chapter["id"], improved, pseudonyms)
-            except Exception as e:
-                logger.error(f"Failed to improve chapter {chapter['title']}: {e}")
+                try:
+                    improved = await self._llm_chat(
+                        context, prompt=improve_prompt,
+                        system_prompt=system_prompt,
+                        temperature=0.5, max_tokens=8192,
+                    )
+                    self._update_chapter_content(chapters, chapter["id"], improved, pseudonyms)
+                except Exception as e:
+                    logger.error(f"Failed to improve chapter {chapter['title']}: {e}")
+
+                completed += 1
+                context.set_progress(int(5 + (completed / total) * 90), f"Amélioration {completed}/{total} terminée...")
+
+        await asyncio.gather(*[improve_one(ch) for ch in written])
 
         await self._save_chapters(context, chapters)
         context.set_progress(100, "Amélioration complète terminée")
@@ -1819,11 +1834,13 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
         total = len(written)
         context.set_progress(5, f"Nettoyage de {total} chapitre(s)...")
 
-        for idx, chapter in enumerate(written):
-            pct = int(5 + (idx / total) * 90)
-            context.set_progress(pct, f"Nettoyage {idx+1}/{total} : {chapter['title']}...")
+        completed = 0
+        semaphore = asyncio.Semaphore(3)
 
-            cleanup_prompt = f"""Tu es un expert en mise en page markdown pour mémoires techniques.
+        async def cleanup_one(chapter):
+            nonlocal completed
+            async with semaphore:
+                cleanup_prompt = f"""Tu es un expert en mise en page markdown pour mémoires techniques.
 Nettoie et corrige le formatage du contenu suivant. Retourne le contenu COMPLET corrigé.
 
 CONTENU À NETTOYER :
@@ -1842,15 +1859,20 @@ CORRECTIONS À APPLIQUER :
 7. NE MODIFIE PAS le texte en lui-même, seulement le formatage markdown.
 8. Ne génère JAMAIS de JSON. Retourne UNIQUEMENT le contenu markdown nettoyé."""
 
-            try:
-                cleaned = await self._llm_chat(
-                    context, prompt=cleanup_prompt,
-                    system_prompt="Tu es un expert en formatage markdown. Corrige le formatage sans modifier le contenu.",
-                    temperature=0.1, max_tokens=4096,
-                )
-                self._update_chapter_content(chapters, chapter["id"], cleaned, pseudonyms)
-            except Exception as e:
-                logger.error(f"Failed to cleanup chapter {chapter['title']}: {e}")
+                try:
+                    cleaned = await self._llm_chat(
+                        context, prompt=cleanup_prompt,
+                        system_prompt="Tu es un expert en formatage markdown. Corrige le formatage sans modifier le contenu.",
+                        temperature=0.1, max_tokens=4096,
+                    )
+                    self._update_chapter_content(chapters, chapter["id"], cleaned, pseudonyms)
+                except Exception as e:
+                    logger.error(f"Failed to cleanup chapter {chapter['title']}: {e}")
+
+                completed += 1
+                context.set_progress(int(5 + (completed / total) * 90), f"Nettoyage {completed}/{total} terminé...")
+
+        await asyncio.gather(*[cleanup_one(ch) for ch in written])
 
         await self._save_chapters(context, chapters)
         context.set_progress(100, "Mise en page terminée")
