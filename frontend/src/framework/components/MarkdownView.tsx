@@ -143,8 +143,8 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content }) => {
   }
   // Ensure blank lines before headings (required for proper markdown parsing)
   processed = processed.replace(/([^\n])\n(#{1,4}\s)/g, '$1\n\n$2');
-  // Ensure blank lines before table blocks
-  processed = processed.replace(/([^\n])\n(\|)/g, '$1\n\n$2');
+  // Ensure blank lines before table blocks (only before first | row, not between consecutive table rows)
+  processed = processed.replace(/^([^|\n][^\n]*)\n(\|)/gm, '$1\n\n$2');
   // Ensure blank lines before/after horizontal rules
   processed = processed.replace(/([^\n])\n(---+)\n/g, '$1\n\n$2\n\n');
   // Convert HTML <br> tags to markdown line breaks

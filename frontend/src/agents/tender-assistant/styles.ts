@@ -93,6 +93,8 @@ const styles = {
     transition: 'all 0.15s ease',
     border: 'none' as const,
     background: 'transparent',
+    outline: 'none' as const,
+    WebkitAppearance: 'none' as any,
     width: '100%',
     textAlign: 'left' as const,
     borderLeft: '3px solid transparent',
@@ -299,6 +301,7 @@ const styles = {
     transition: 'all 0.15s ease',
     fontWeight: 500,
     color: T.textDim,
+    outline: 'none' as const,
   },
   filterChipActive: {
     backgroundColor: T.primary,
@@ -396,6 +399,8 @@ const styles = {
     transition: 'background-color 0.1s ease',
     border: 'none' as const,
     background: 'transparent',
+    outline: 'none' as const,
+    WebkitAppearance: 'none' as any,
     width: '100%',
     textAlign: 'left' as const,
   },
@@ -667,6 +672,7 @@ const styles = {
     gap: 6,
     backgroundColor: T.bg,  // explicit default — never browser gray
     color: T.text,
+    outline: 'none' as const,
   },
   btnPrimary: {
     backgroundColor: T.primary,
