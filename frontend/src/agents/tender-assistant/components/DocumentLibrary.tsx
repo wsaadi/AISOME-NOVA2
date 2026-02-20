@@ -2,6 +2,13 @@ import React, { useState, useCallback } from 'react';
 import { FileUpload, ActionButton } from 'framework/components';
 import styles, { CATEGORY_COLORS } from '../styles';
 
+interface DocumentImage {
+  key: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
+
 interface Document {
   id: string;
   fileKey: string;
@@ -11,6 +18,7 @@ interface Document {
   uploadedAt: string;
   analyzed: boolean;
   textLength?: number;
+  images?: DocumentImage[];
 }
 
 interface Props {
@@ -187,6 +195,19 @@ const DocumentLibrary: React.FC<Props> = ({
                     {new Date(doc.uploadedAt).toLocaleDateString('fr-FR')}
                     {doc.textLength ? ` · ${Math.round(doc.textLength / 1000)}k car.` : ''}
                     {doc.analyzed && ' · Analysé ✓'}
+                    {doc.images && doc.images.length > 0 && (
+                      <span style={{
+                        marginLeft: 4,
+                        padding: '1px 6px',
+                        borderRadius: 4,
+                        backgroundColor: '#e8f5e9',
+                        color: '#2e7d32',
+                        fontSize: 10,
+                        fontWeight: 600,
+                      }}>
+                        {doc.images.length} image{doc.images.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
                   {doc.tags.length > 0 && (
                     <div style={styles.docTags}>

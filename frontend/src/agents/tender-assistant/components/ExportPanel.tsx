@@ -18,6 +18,8 @@ interface Props {
   onExport: (title: string, templateKey: string | null) => void;
   onUploadTemplate: (file: File) => Promise<void>;
   onDownloadFile: (fileKey: string, fileName: string) => void;
+  onExportWorkspace: () => void;
+  onImportWorkspace: (file: File) => Promise<void>;
   lastExportKey: string | null;
   lastExportName: string | null;
   isLoading: boolean;
@@ -27,7 +29,8 @@ interface Props {
 
 const ExportPanel: React.FC<Props> = ({
   chapters, templateKey, templateName, onExport, onUploadTemplate,
-  onDownloadFile, lastExportKey, lastExportName, isLoading, progress, progressMessage,
+  onDownloadFile, onExportWorkspace, onImportWorkspace,
+  lastExportKey, lastExportName, isLoading, progress, progressMessage,
 }) => {
   const [title, setTitle] = useState("Réponse à l'Appel d'Offres");
 
@@ -156,6 +159,77 @@ const ExportPanel: React.FC<Props> = ({
           <p style={styles.progressText}>{progressMessage}</p>
         </div>
       )}
+
+      {/* Workspace export/import */}
+      <div style={{
+        marginTop: 32,
+        padding: 20,
+        borderRadius: 8,
+        border: '2px solid var(--divider-color, #e0e0e0)',
+        backgroundColor: 'var(--bg-color, #fafafa)',
+      }}>
+        <h4 style={{ ...styles.sectionTitle, marginBottom: 8 }}>
+          Espace de travail complet
+        </h4>
+        <p style={{ fontSize: 12, color: '#666', marginBottom: 16 }}>
+          Exportez ou importez l'intégralité de votre espace de travail (documents, analyses,
+          structure, chapitres rédigés, pseudonymes, améliorations). Utile pour faire une
+          sauvegarde ou migrer vers une autre plateforme.
+        </p>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+          <button
+            style={{
+              ...styles.btn,
+              backgroundColor: '#2e7d32',
+              color: '#fff',
+              padding: '10px 20px',
+              fontSize: 13,
+              fontWeight: 600,
+              ...(isLoading ? styles.btnDisabled : {}),
+            }}
+            onClick={onExportWorkspace}
+            disabled={isLoading}
+          >
+            Exporter l'espace de travail
+          </button>
+
+          <label style={{
+            ...styles.btn,
+            backgroundColor: '#1565c0',
+            color: '#fff',
+            padding: '10px 20px',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: isLoading ? 'not-allowed' : 'pointer',
+            opacity: isLoading ? 0.5 : 1,
+          }}>
+            Importer un espace de travail
+            <input
+              type="file"
+              accept=".zip"
+              style={{ display: 'none' }}
+              disabled={isLoading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  onImportWorkspace(file);
+                  e.target.value = '';
+                }
+              }}
+            />
+          </label>
+
+          {lastExportKey && lastExportName && lastExportName.endsWith('.zip') && (
+            <button
+              style={{ ...styles.btn, ...styles.btnSecondary }}
+              onClick={() => onDownloadFile(lastExportKey, lastExportName)}
+            >
+              Télécharger le dernier export workspace
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Chapter preview */}
       <div style={{ marginTop: 24 }}>

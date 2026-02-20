@@ -244,6 +244,28 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           if (meta.pseudonyms) {
             setPseudonyms(meta.pseudonyms);
           }
+          // Retroactive pseudonymization may have updated chapters
+          if (meta.chapters) {
+            setChapters(meta.chapters);
+          }
+          break;
+
+        case 'workspace_exported':
+          if (meta.fileKey && meta.fileName) {
+            setLastExportKey(meta.fileKey);
+            setLastExportName(meta.fileName);
+          }
+          break;
+
+        case 'workspace_imported':
+          // Full state refresh
+          if (meta.state) {
+            setDocuments(meta.state.documents || []);
+            setChapters(meta.state.chapters || []);
+            setImprovements(meta.state.improvements || []);
+            setAnalyses(meta.state.analyses || {});
+            setPseudonyms(meta.state.pseudonyms || []);
+          }
           break;
       }
     }
@@ -344,6 +366,16 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
   const handleUploadTemplate = useCallback(async (file: File) => {
     const key = await storage.upload(file);
     await sendMessage('', { action: 'upload_template', fileKey: key, fileName: file.name });
+  }, [storage, sendMessage]);
+
+  // -- Workspace export/import handlers --
+  const handleExportWorkspace = useCallback(() => {
+    sendMessage('', { action: 'export_workspace' });
+  }, [sendMessage]);
+
+  const handleImportWorkspace = useCallback(async (file: File) => {
+    const key = await storage.upload(file);
+    await sendMessage('', { action: 'import_workspace', fileKey: key });
   }, [storage, sendMessage]);
 
   const handleDownloadFile = useCallback(async (fileKey: string, fileName: string) => {
@@ -591,6 +623,8 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               onExport={handleExport}
               onUploadTemplate={handleUploadTemplate}
               onDownloadFile={handleDownloadFile}
+              onExportWorkspace={handleExportWorkspace}
+              onImportWorkspace={handleImportWorkspace}
               lastExportKey={lastExportKey}
               lastExportName={lastExportName}
               isLoading={isLoading}
