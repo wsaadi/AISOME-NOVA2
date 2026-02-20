@@ -11,6 +11,8 @@ interface PseudonymEntry {
 interface Props {
   pseudonyms: PseudonymEntry[];
   onUpdate: (pseudonyms: PseudonymEntry[]) => void;
+  onDetect: () => void;
+  isLoading: boolean;
 }
 
 const CATEGORIES = [
@@ -31,7 +33,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   other: { bg: '#f5f5f5', text: '#616161' },
 };
 
-const PseudonymPanel: React.FC<Props> = ({ pseudonyms, onUpdate }) => {
+const PseudonymPanel: React.FC<Props> = ({ pseudonyms, onUpdate, onDetect, isLoading }) => {
   const [newPlaceholder, setNewPlaceholder] = useState('');
   const [newReal, setNewReal] = useState('');
   const [newCategory, setNewCategory] = useState('company');
@@ -84,6 +86,45 @@ const PseudonymPanel: React.FC<Props> = ({ pseudonyms, onUpdate }) => {
         Protégez les informations confidentielles en les remplaçant par des pseudonymes
         avant l'envoi à l'IA. Les vrais noms ne seront visibles que dans votre aperçu et vos exports.
       </p>
+
+      {/* Auto-detect button */}
+      <div style={{
+        padding: 16,
+        borderRadius: 8,
+        backgroundColor: '#e8eaf6',
+        border: '1px solid #9fa8da',
+        marginBottom: 20,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+      }}>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#283593', margin: 0, marginBottom: 4 }}>
+            Détection automatique
+          </p>
+          <p style={{ fontSize: 11, color: '#5c6bc0', margin: 0 }}>
+            Analyse vos documents et détecte automatiquement les noms de sociétés, personnes, projets et autres données confidentielles.
+          </p>
+        </div>
+        <button
+          style={{
+            ...styles.btn,
+            backgroundColor: '#3949ab',
+            color: '#fff',
+            padding: '10px 20px',
+            fontSize: 13,
+            fontWeight: 600,
+            whiteSpace: 'nowrap' as const,
+            opacity: isLoading ? 0.5 : 1,
+            cursor: isLoading ? 'not-allowed' : 'pointer',
+          }}
+          onClick={onDetect}
+          disabled={isLoading}
+        >
+          {isLoading ? 'Détection en cours...' : 'Détecter automatiquement'}
+        </button>
+      </div>
 
       {/* Add form */}
       <div style={{

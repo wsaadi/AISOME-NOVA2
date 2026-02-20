@@ -257,6 +257,12 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           }
           break;
 
+        case 'confidential_detected':
+          if (meta.pseudonyms) {
+            setPseudonyms(meta.pseudonyms);
+          }
+          break;
+
         case 'workspace_exported':
           if (meta.fileKey && meta.fileName) {
             setLastExportKey(meta.fileKey);
@@ -371,6 +377,10 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
   const handleUpdatePseudonyms = useCallback((updated: any[]) => {
     setPseudonyms(updated);
     sendMessage('', { action: 'update_pseudonyms', pseudonyms: updated });
+  }, [sendMessage]);
+
+  const handleDetectConfidential = useCallback(() => {
+    sendMessage('Détecte les données confidentielles dans les documents', { action: 'detect_confidential' });
   }, [sendMessage]);
 
   // -- Export handlers --
@@ -629,6 +639,8 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
             <PseudonymPanel
               pseudonyms={pseudonyms}
               onUpdate={handleUpdatePseudonyms}
+              onDetect={handleDetectConfidential}
+              isLoading={isLoading}
             />
           )}
 

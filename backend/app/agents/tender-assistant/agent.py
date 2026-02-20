@@ -84,6 +84,7 @@ class TenderAssistantAgent(BaseAgent):
             "upload_template": self._handle_upload_template,
             "get_project_state": self._handle_get_state,
             "update_pseudonyms": self._handle_update_pseudonyms,
+            "detect_confidential": self._handle_detect_confidential,
             "export_workspace": self._handle_export_workspace,
             "import_workspace": self._handle_import_workspace,
             "chat": self._handle_chat,
@@ -1664,6 +1665,166 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
                 "chapters": chapters if changed else None,
             }
         )
+
+    # =========================================================================
+    # Auto-detect confidential entities
+    # =========================================================================
+
+    async def _handle_detect_confidential(
+        self, message: UserMessage, context: AgentContext, system_prompt: str
+    ) -> AgentResponse:
+        """Scan all analyzed documents and detect confidential entities using LLM."""
+        context.set_progress(10, "Collecte des textes analysés...")
+
+        docs = await self._get_documents_meta(context)
+        existing_pseudonyms = await self._get_pseudonyms(context)
+
+        # Collect text from all analyzed documents
+        all_texts: list[str] = []
+        for doc in docs:
+            text_key = doc.get("textKey")
+            if not text_key:
+                continue
+            try:
+                raw = await context.storage.get(text_key)
+                if raw:
+                    text = raw.decode("utf-8")
+                    # Limit per-document text to avoid huge prompts
+                    all_texts.append(f"--- Document: {doc.get('fileName', '?')} ---\n{text[:8000]}")
+            except Exception:
+                pass
+
+        if not all_texts:
+            return AgentResponse(
+                content="Aucun document analysé disponible pour la détection.",
+                metadata={"type": "confidential_detected", "detected": []}
+            )
+
+        context.set_progress(30, "Analyse des données confidentielles par l'IA...")
+
+        # Build the prompt for LLM entity detection
+        combined = "\n\n".join(all_texts)
+        # Limit total size
+        if len(combined) > 30000:
+            combined = combined[:30000]
+
+        # List already-known real values to help LLM avoid duplicates
+        known_reals = [e.get("real", "") for e in existing_pseudonyms if e.get("real")]
+
+        detection_prompt = f"""Analyse les documents suivants et identifie toutes les données confidentielles qui devraient être pseudonymisées.
+
+Catégories à détecter :
+- **company** : noms de sociétés, entreprises, organisations, groupements
+- **person** : noms de personnes (prénom + nom)
+- **project** : noms de projets, programmes, appels d'offres
+- **client** : noms de clients, donneurs d'ordre, maîtres d'ouvrage
+- **location** : adresses précises, noms de sites spécifiques
+- **other** : numéros de contrat, montants financiers spécifiques, références internes
+
+{f"Entités déjà connues (NE PAS les inclure dans les résultats) : {', '.join(known_reals)}" if known_reals else ""}
+
+IMPORTANT :
+- Ne détecte que les entités SPÉCIFIQUES et CONFIDENTIELLES (pas les termes génériques)
+- Ignore les noms de pays, de villes connues, les termes techniques standards
+- Pour chaque entité, propose un pseudonyme adapté (ex: [Société A], [M. Dupont], [Projet Alpha])
+- Numérote les pseudonymes de la même catégorie (ex: [Société 1], [Société 2])
+
+Réponds UNIQUEMENT avec un JSON valide, sous la forme d'un tableau :
+```json
+[
+  {{"placeholder": "[Société 1]", "real": "NomDeLaSociété", "category": "company"}},
+  {{"placeholder": "[Personne 1]", "real": "Jean Martin", "category": "person"}}
+]
+```
+
+Si aucune entité confidentielle n'est trouvée, réponds avec un tableau vide : []
+
+Documents à analyser :
+{combined}"""
+
+        try:
+            result = await context.llm.chat(
+                prompt=detection_prompt,
+                system_prompt="Tu es un expert en protection des données confidentielles. Tu identifies les entités sensibles dans les documents d'appels d'offres.",
+                temperature=0.1,
+                max_tokens=4096,
+            )
+
+            context.set_progress(70, "Traitement des résultats...")
+
+            # Extract JSON from response
+            detected = self._extract_json_array(result)
+
+            if not detected:
+                return AgentResponse(
+                    content="Aucune entité confidentielle détectée dans les documents.",
+                    metadata={"type": "confidential_detected", "detected": []}
+                )
+
+            # Filter out entities whose real value already exists in pseudonyms
+            existing_reals_lower = {e.get("real", "").lower() for e in existing_pseudonyms}
+            existing_placeholders = {e.get("placeholder", "") for e in existing_pseudonyms}
+
+            new_entries = []
+            for item in detected:
+                real = item.get("real", "").strip()
+                placeholder = item.get("placeholder", "").strip()
+                category = item.get("category", "other").strip()
+                if not real or not placeholder:
+                    continue
+                if real.lower() in existing_reals_lower:
+                    continue
+                if placeholder in existing_placeholders:
+                    continue
+                # Ensure placeholder is wrapped in brackets
+                if not placeholder.startswith("["):
+                    placeholder = f"[{placeholder}]"
+                new_entries.append({
+                    "id": f"ps-auto-{len(existing_pseudonyms) + len(new_entries) + 1}-{datetime.now().strftime('%H%M%S')}",
+                    "placeholder": placeholder,
+                    "real": real,
+                    "category": category if category in ("company", "person", "project", "client", "location", "other") else "other",
+                })
+
+            context.set_progress(90, "Mise à jour de la liste...")
+
+            # Merge with existing pseudonyms
+            merged = existing_pseudonyms + new_entries
+            await self._save_pseudonyms(context, merged)
+
+            return AgentResponse(
+                content=f"{len(new_entries)} entité(s) confidentielle(s) détectée(s) et ajoutée(s) automatiquement.",
+                metadata={
+                    "type": "confidential_detected",
+                    "detected": new_entries,
+                    "pseudonyms": merged,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error detecting confidential entities: {e}")
+            return AgentResponse(
+                content=f"Erreur lors de la détection : {str(e)}",
+                metadata={"type": "error", "error": str(e)}
+            )
+
+    def _extract_json_array(self, text: str) -> list[dict]:
+        """Extract a JSON array from LLM response text."""
+        # Try fenced code block first
+        match = re.search(r"```(?:json)?\s*\n(\[.*?\])\s*\n```", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+        # Try raw JSON array
+        match = re.search(r"\[.*\]", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+        return []
 
     # =========================================================================
     # Workspace export / import
