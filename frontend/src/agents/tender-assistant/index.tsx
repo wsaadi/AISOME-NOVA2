@@ -296,6 +296,12 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           }
           break;
 
+        case 'formatting_cleaned':
+          if (meta.chapters) {
+            setChapters(meta.chapters);
+          }
+          break;
+
         case 'workspace_exported':
           if (meta.fileKey && meta.fileName) {
             setLastExportKey(meta.fileKey);
@@ -423,6 +429,10 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
 
   const handleApplyPseudonyms = useCallback(() => {
     sendMessage('', { action: 'apply_pseudonyms' });
+  }, [sendMessage]);
+
+  const handleCleanupFormatting = useCallback(() => {
+    sendMessage('', { action: 'cleanup_formatting' });
   }, [sendMessage]);
 
   const handleDetectConfidential = useCallback(() => {
@@ -706,6 +716,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               onSaveContent={handleSaveContent}
               onUpdateStructure={handleUpdateStructure}
               onGenerateStructure={handleGenerateStructure}
+              onCleanupFormatting={handleCleanupFormatting}
               isLoading={isLoading}
               streamingContent={streamingContent}
               error={error}

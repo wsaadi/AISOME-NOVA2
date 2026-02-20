@@ -32,6 +32,7 @@ interface Props {
   onSaveContent: (chapterId: string, content: string) => void;
   onUpdateStructure: (chapters: Chapter[]) => void;
   onGenerateStructure: () => void;
+  onCleanupFormatting: () => void;
   isLoading: boolean;
   streamingContent: string;
   error?: string | null;
@@ -77,8 +78,8 @@ const stripLeadingHeading = (content: string, chapterTitle: string): string => {
 
 const ResponseEditor: React.FC<Props> = ({
   chapters, onWriteChapter, onImproveChapter, onWriteAll, onImproveAll,
-  onSaveContent, onUpdateStructure, onGenerateStructure, isLoading, streamingContent,
-  error, pseudonyms = [],
+  onSaveContent, onUpdateStructure, onGenerateStructure, onCleanupFormatting,
+  isLoading, streamingContent, error, pseudonyms = [],
 }) => {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -445,6 +446,21 @@ const ResponseEditor: React.FC<Props> = ({
                 title={`Améliorer les ${stats.written} chapitres rédigés`}
               >
                 Améliorer tout ({stats.written})
+              </button>
+            )}
+            {stats.written > 0 && (
+              <button
+                style={{
+                  flex: 1, padding: '5px 4px', fontSize: 10, fontWeight: 600,
+                  border: 'none', borderRadius: 4, cursor: isLoading ? 'not-allowed' : 'pointer',
+                  backgroundColor: '#00796b', color: '#fff',
+                  opacity: isLoading ? 0.5 : 1,
+                }}
+                onClick={onCleanupFormatting}
+                disabled={isLoading}
+                title="Nettoyer le formatage markdown de tous les chapitres (mermaid, tableaux, code fences...)"
+              >
+                Mise en page
               </button>
             )}
           </div>
