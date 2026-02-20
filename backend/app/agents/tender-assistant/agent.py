@@ -86,6 +86,7 @@ class TenderAssistantAgent(BaseAgent):
             "update_pseudonyms": self._handle_update_pseudonyms,
             "apply_pseudonyms": self._handle_apply_pseudonyms,
             "detect_confidential": self._handle_detect_confidential,
+            "cleanup_formatting": self._handle_cleanup_formatting,
             "export_workspace": self._handle_export_workspace,
             "import_workspace": self._handle_import_workspace,
             "chat": self._handle_chat,
@@ -950,7 +951,7 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
 
         context.set_progress(40, "Rédaction IA en cours...")
 
-        write_prompt = f"""Rédige le chapitre suivant de la réponse à l'appel d'offres.
+        write_prompt = f"""Rédige le chapitre suivant pour un MÉMOIRE TECHNIQUE officiel de réponse à appel d'offres.
 
 CHAPITRE : {chapter['number']} - {chapter['title']}
 DESCRIPTION : {chapter.get('description', '')}
@@ -967,28 +968,44 @@ CONTEXTE DOCUMENTAIRE :
 CONTENU EXISTANT DU CHAPITRE :
 {chapter.get('content', '[Aucun contenu existant]')}
 
-CONSIGNES IMPORTANTES :
-1. CAPITALISE AU MAXIMUM sur le contenu de la réponse précédente s'il est fourni ci-dessus.
-   Reprends les formulations, les arguments, les données factuelles, les tableaux et les
-   engagements qui sont toujours pertinents. Ne réinvente pas ce qui existe déjà et fonctionne.
-2. ENRICHIS et AMÉLIORE le contenu précédent en y ajoutant :
-   - Les nouvelles exigences du nouvel AO
-   - Les points d'amélioration identifiés
-   - Des formulations plus percutantes et professionnelles
-   - Des données à jour si pertinent
-3. ADAPTE le contenu aux spécificités du nouvel appel d'offres (nouvelles exigences,
-   critères modifiés, contexte actualisé).
-4. Si aucune réponse précédente n'est disponible, rédige un contenu original complet.
-5. Utilise du markdown pour la mise en forme (titres, listes, tableaux, etc.).
-6. Sois concret, factuel et orienté solution.
-7. Ne commence PAS le contenu par un titre qui répète le nom du chapitre.
-8. Ne génère JAMAIS de bloc JSON structuré, de métadonnées ou de résumé technique. Retourne UNIQUEMENT le contenu markdown rédigé."""
+═══ CONSIGNES IMPÉRATIVES DE RÉDACTION ═══
+
+QUALITÉ ATTENDUE : Ce chapitre sera intégré tel quel dans un mémoire technique soumis à un acheteur public. Il doit être LIVRABLE CLÉ EN MAIN, pas une ébauche ni une prise de notes.
+
+STYLE ET FORME :
+1. RÉDIGE EN PARAGRAPHES DÉVELOPPÉS avec des phrases complètes et articulées.
+   Chaque paragraphe doit contenir 3 à 6 phrases développant une idée.
+   INTERDIT : les listes de puces sèches sans phrases, le style télégraphique, les notes brèves.
+2. VOLUME MINIMUM : le chapitre doit faire au moins 400-800 mots. Développe, argumente, détaille.
+3. STRUCTURE NARRATIVE : pour chaque sujet abordé, suis la logique :
+   Contexte/enjeu → Notre approche → Mise en œuvre détaillée → Engagements concrets → Bénéfices client
+4. LANGAGE PROFESSIONNEL SOUTENU : ton formel d'entreprise, vocabulaire précis du secteur,
+   connecteurs logiques entre les idées (« En effet », « Par ailleurs », « À cet égard »...).
+5. ENGAGEMENTS CHIFFRÉS : SLA, KPIs, délais, taux de disponibilité, pénalités.
+   Pas de formulations vagues comme "nous assurons une bonne qualité".
+6. ALTERNE prose développée et éléments visuels (tableaux de synthèse, listes structurées)
+   pour rendre le contenu clair et lisible. Les tableaux complètent la prose, pas l'inverse.
+
+CONTENU :
+7. CAPITALISE sur le contenu de la réponse précédente s'il est fourni. Reprends les
+   arguments et données factuelles pertinentes, puis enrichis-les.
+8. VALORISE l'expérience du marché précédent : cite des résultats concrets obtenus,
+   des chiffres de performance, des retours terrain.
+9. RÉPONDS explicitement à chaque exigence listée dans les points clés à couvrir.
+10. INTÈGRE les points d'amélioration identifiés ci-dessus.
+
+FORMAT :
+11. Ne commence PAS par un titre qui répète le nom du chapitre.
+12. Utilise du markdown propre : ## pour les sous-sections, **gras** pour les termes clés,
+    tableaux markdown pour les synthèses, listes numérotées pour les processus.
+13. Ne génère JAMAIS de bloc JSON, de métadonnées ou de résumé structuré.
+    Retourne UNIQUEMENT le contenu rédigé en markdown."""
 
         content = await self._llm_chat(
             context, prompt=write_prompt,
             system_prompt=system_prompt,
             temperature=0.5,
-            max_tokens=4096,
+            max_tokens=8192,
         )
 
         # Update chapter content (auto-apply pseudonyms)
@@ -1024,7 +1041,7 @@ CONSIGNES IMPORTANTES :
 
         context.set_progress(30, "Amélioration en cours...")
 
-        improve_prompt = f"""Améliore le contenu suivant du chapitre "{chapter['number']} - {chapter['title']}".
+        improve_prompt = f"""Améliore le contenu suivant du chapitre "{chapter['number']} - {chapter['title']}" pour un MÉMOIRE TECHNIQUE officiel.
 
 CONTENU ACTUEL :
 {chapter['content']}
@@ -1032,16 +1049,25 @@ CONTENU ACTUEL :
 DEMANDE DE L'UTILISATEUR :
 {user_instructions}
 
-Améliore le contenu en tenant compte de la demande. Conserve la structure existante
-sauf si l'utilisateur demande explicitement de la modifier. Retourne le contenu complet
-amélioré (pas juste les modifications).
-Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEMENT le contenu markdown."""
+═══ CONSIGNES D'AMÉLIORATION ═══
+
+1. APPLIQUE la demande de l'utilisateur en priorité.
+2. DÉVELOPPE les passages trop concis : transforme les listes sèches en paragraphes
+   développés avec des phrases complètes et articulées (3-6 phrases par paragraphe minimum).
+3. RENFORCE le niveau de langage : ton professionnel soutenu, connecteurs logiques,
+   vocabulaire précis du secteur.
+4. AJOUTE des engagements chiffrés concrets (SLA, KPIs, délais) là où c'est pertinent.
+5. ASSURE que chaque section suit la structure : contexte → approche → mise en œuvre → engagements → bénéfices.
+6. CONSERVE la structure globale sauf si elle peut être significativement améliorée.
+7. Retourne le contenu COMPLET amélioré, pas juste les modifications.
+8. CORRIGE tout problème de formatage markdown (mermaid mal encapsulé, tableaux cassés, etc.).
+9. Ne génère JAMAIS de bloc JSON ou de métadonnées. Retourne UNIQUEMENT le contenu markdown."""
 
         improved = await self._llm_chat(
             context, prompt=improve_prompt,
             system_prompt=system_prompt,
             temperature=0.5,
-            max_tokens=4096,
+            max_tokens=8192,
         )
 
         pseudonyms = await self._get_pseudonyms(context)
@@ -1107,7 +1133,7 @@ Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEM
                 for imp in related_improvements:
                     improvements_text += f"- [{imp.get('priority', 'normal')}] {imp['title']}: {imp.get('description', '')}\n"
 
-            write_prompt = f"""Rédige le chapitre suivant de la réponse à l'appel d'offres.
+            write_prompt = f"""Rédige le chapitre suivant pour un MÉMOIRE TECHNIQUE officiel de réponse à appel d'offres.
 
 CHAPITRE : {chapter['number']} - {chapter['title']}
 DESCRIPTION : {chapter.get('description', '')}
@@ -1118,18 +1144,21 @@ CONTEXTE DOCUMENTAIRE :
 {relevant_texts[:12000]}
 {improvements_text}
 
-CONSIGNES :
-1. CAPITALISE AU MAXIMUM sur le contenu de la réponse précédente si fourni.
-2. ENRICHIS avec les nouvelles exigences du nouvel AO.
-3. Utilise du markdown. Sois concret, factuel et orienté solution.
-4. Ne commence PAS par un titre qui répète le nom du chapitre.
-5. Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEMENT le contenu markdown du chapitre."""
+CONSIGNES IMPÉRATIVES :
+1. RÉDIGE EN PARAGRAPHES DÉVELOPPÉS (3-6 phrases par paragraphe). INTERDIT : les listes sèches sans phrases, le style télégraphique.
+2. VOLUME : minimum 400 mots. Développe, argumente, détaille chaque point.
+3. LANGAGE PROFESSIONNEL SOUTENU : phrases complètes, connecteurs logiques, vocabulaire du secteur.
+4. Pour chaque sujet : contexte → approche → mise en œuvre → engagements chiffrés → bénéfices client.
+5. CAPITALISE sur le contexte documentaire et la réponse précédente.
+6. INCLUS des engagements concrets : SLA, KPIs, délais, chiffres de performance.
+7. Ne commence PAS par un titre répétant le nom du chapitre.
+8. Ne génère JAMAIS de JSON ou métadonnées. UNIQUEMENT du markdown rédigé."""
 
             try:
                 content = await self._llm_chat(
                     context, prompt=write_prompt,
                     system_prompt=system_prompt,
-                    temperature=0.5, max_tokens=4096,
+                    temperature=0.5, max_tokens=8192,
                 )
                 self._update_chapter_content(chapters, chapter["id"], content, pseudonyms)
             except Exception as e:
@@ -1195,33 +1224,35 @@ CONSIGNES :
                 for imp in related_improvements:
                     improvements_text += f"- [{imp.get('priority', 'normal')}] {imp['title']}: {imp.get('description', '')}\n"
 
-            improve_prompt = f"""Améliore le chapitre suivant de la réponse à l'appel d'offres.
+            improve_prompt = f"""Améliore le chapitre suivant pour le rendre livrable dans un MÉMOIRE TECHNIQUE officiel.
 
 CHAPITRE : {chapter['number']} - {chapter['title']}
 
 CONTENU ACTUEL :
 {chapter['content']}
 
-CONTEXTE DOCUMENTAIRE (pour enrichir et vérifier la cohérence) :
+CONTEXTE DOCUMENTAIRE :
 {relevant_texts[:10000]}
 {improvements_text}
 
-CONSIGNES D'AMÉLIORATION :
-1. CAPITALISE sur les documents d'analyse et la réponse précédente pour enrichir le contenu.
-2. Améliore les formulations pour plus de clarté et d'impact professionnel.
-3. Vérifie la cohérence avec les exigences du nouvel AO.
-4. Ajoute des données factuelles, tableaux ou éléments concrets si pertinent.
-5. Intègre les points d'amélioration identifiés ci-dessus.
-6. Conserve la structure globale sauf si elle peut être significativement améliorée.
-7. Retourne le contenu COMPLET amélioré (pas juste les modifications).
-8. Ne commence PAS par un titre qui répète le nom du chapitre.
-9. Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEMENT le contenu markdown."""
+CONSIGNES D'AMÉLIORATION IMPÉRATIVES :
+1. DÉVELOPPE tous les passages trop concis : transforme les listes sèches en paragraphes
+   développés de 3-6 phrases avec connecteurs logiques.
+2. RENFORCE le langage professionnel : ton soutenu d'entreprise, argumentation structurée.
+3. AJOUTE des engagements chiffrés (SLA, KPIs, délais, performances) partout où pertinent.
+4. Pour chaque section, vérifie la structure : contexte → approche → mise en œuvre → engagements → bénéfices.
+5. ENRICHIS avec les données du contexte documentaire et les points d'amélioration.
+6. ASSURE que le volume est suffisant (min 400 mots par chapitre).
+7. CORRIGE tout problème de formatage markdown (mermaid, tableaux, code fences parasites).
+8. Retourne le contenu COMPLET amélioré (pas juste les modifications).
+9. Ne commence PAS par un titre répétant le nom du chapitre.
+10. Ne génère JAMAIS de JSON ou métadonnées. UNIQUEMENT du markdown rédigé."""
 
             try:
                 improved = await self._llm_chat(
                     context, prompt=improve_prompt,
                     system_prompt=system_prompt,
-                    temperature=0.5, max_tokens=4096,
+                    temperature=0.5, max_tokens=8192,
                 )
                 self._update_chapter_content(chapters, chapter["id"], improved, pseudonyms)
             except Exception as e:
@@ -1761,6 +1792,79 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
         )
 
     # =========================================================================
+    # Full formatting cleanup pass
+    # =========================================================================
+
+    async def _handle_cleanup_formatting(
+        self, message: UserMessage, context: AgentContext, system_prompt: str
+    ) -> AgentResponse:
+        """Run a full formatting cleanup pass on all written chapters."""
+        chapters = await self._get_chapters(context)
+        pseudonyms = await self._get_pseudonyms(context)
+
+        written = []
+        for ch in chapters:
+            if ch.get("content"):
+                written.append(ch)
+            for sub in ch.get("sub_chapters", []):
+                if sub.get("content"):
+                    written.append(sub)
+
+        if not written:
+            return AgentResponse(
+                content="Aucun chapitre rédigé à nettoyer.",
+                metadata={"type": "formatting_cleaned", "chapters": chapters}
+            )
+
+        total = len(written)
+        context.set_progress(5, f"Nettoyage de {total} chapitre(s)...")
+
+        for idx, chapter in enumerate(written):
+            pct = int(5 + (idx / total) * 90)
+            context.set_progress(pct, f"Nettoyage {idx+1}/{total} : {chapter['title']}...")
+
+            cleanup_prompt = f"""Tu es un expert en mise en page markdown pour mémoires techniques.
+Nettoie et corrige le formatage du contenu suivant. Retourne le contenu COMPLET corrigé.
+
+CONTENU À NETTOYER :
+{chapter['content']}
+
+CORRECTIONS À APPLIQUER :
+1. MERMAID : Si tu trouves des blocs « graph TD », « graph LR », « flowchart », « sequenceDiagram »
+   qui ne sont pas dans des code fences ```mermaid ... ```, encapsule-les correctement.
+   Si un diagramme mermaid est mal formé ou invalide, supprime-le et remplace par un texte descriptif.
+2. CODE FENCES : Supprime les code fences ```markdown ou ```json parasites qui enveloppent du contenu normal.
+3. TABLEAUX : Vérifie que chaque tableau markdown a une ligne de séparation |---|---| et
+   que les colonnes sont cohérentes. Corrige les tableaux cassés.
+4. TITRES : Assure une ligne vide avant chaque # heading.
+5. JSON PARASITES : Supprime tout bloc JSON structuré (type chapter_content, métadonnées).
+6. LISTES : Assure une ligne vide avant chaque liste.
+7. NE MODIFIE PAS le texte en lui-même, seulement le formatage markdown.
+8. Ne génère JAMAIS de JSON. Retourne UNIQUEMENT le contenu markdown nettoyé."""
+
+            try:
+                cleaned = await self._llm_chat(
+                    context, prompt=cleanup_prompt,
+                    system_prompt="Tu es un expert en formatage markdown. Corrige le formatage sans modifier le contenu.",
+                    temperature=0.1, max_tokens=4096,
+                )
+                self._update_chapter_content(chapters, chapter["id"], cleaned, pseudonyms)
+            except Exception as e:
+                logger.error(f"Failed to cleanup chapter {chapter['title']}: {e}")
+
+        await self._save_chapters(context, chapters)
+        context.set_progress(100, "Mise en page terminée")
+
+        return AgentResponse(
+            content=f"Mise en page terminée : {total} chapitres nettoyés.",
+            metadata={
+                "type": "formatting_cleaned",
+                "chapters": chapters,
+                "cleanedCount": total,
+            }
+        )
+
+    # =========================================================================
     # Auto-detect confidential entities
     # =========================================================================
 
@@ -2182,7 +2286,7 @@ Documents à analyser :
                 relevant_texts = await self._gather_relevant_context(
                     context, chapter, await self._get_documents_meta(context), await self._get_analyses(context)
                 )
-                prompt = f"""Rédige le chapitre {chapter['number']} - {chapter['title']}.
+                prompt = f"""Rédige le chapitre {chapter['number']} - {chapter['title']} pour un MÉMOIRE TECHNIQUE officiel.
 Description : {chapter.get('description', '')}
 Points clés : {json.dumps(chapter.get('key_points', []), ensure_ascii=False)}
 Instructions : {message.content if message.content else 'Rédige de manière complète et professionnelle.'}
@@ -2192,15 +2296,22 @@ Contexte documentaire :
 
 {f"Contenu existant du chapitre : {chapter.get('content', '')[:2000]}" if chapter.get('content') else ''}
 
-IMPORTANT : Capitalise au maximum sur le contenu de la réponse précédente s'il est fourni.
-Reprends les formulations, arguments et données pertinentes, puis enrichis et adapte au nouvel AO.
-Ne commence PAS par un titre qui répète le nom du chapitre.
-Ne génère JAMAIS de bloc JSON structuré ou de métadonnées. Retourne UNIQUEMENT le contenu markdown."""
+CONSIGNES IMPÉRATIVES :
+- RÉDIGE EN PARAGRAPHES DÉVELOPPÉS (3-6 phrases chacun). INTERDIT : listes sèches, style télégraphique.
+- VOLUME : minimum 400 mots. Développe, argumente, détaille.
+- LANGAGE PROFESSIONNEL SOUTENU avec connecteurs logiques.
+- Inclus des ENGAGEMENTS CHIFFRÉS (SLA, KPIs, délais).
+- Capitalise sur le contenu précédent s'il est fourni.
+- Ne commence PAS par un titre répétant le nom du chapitre.
+- Ne génère JAMAIS de JSON ou métadonnées. UNIQUEMENT du markdown rédigé."""
             else:
-                prompt = f"""Améliore le chapitre {chapter['number']} - {chapter['title']}.
+                prompt = f"""Améliore le chapitre {chapter['number']} - {chapter['title']} pour un MÉMOIRE TECHNIQUE officiel.
 Contenu actuel : {chapter.get('content', '')}
 Demande : {message.content}
-IMPORTANT : Ne génère JAMAIS de bloc JSON ou de métadonnées. Retourne UNIQUEMENT le contenu markdown amélioré."""
+
+CONSIGNES : Développe les passages concis en paragraphes de 3-6 phrases. Renforce le langage professionnel.
+Ajoute des engagements chiffrés. Corrige le formatage markdown. Retourne le contenu COMPLET amélioré.
+Ne génère JAMAIS de JSON ou métadonnées. UNIQUEMENT du markdown rédigé."""
 
             # Apply pseudonymization before streaming
             pseudonyms = await self._get_pseudonyms(context)
@@ -2210,7 +2321,7 @@ IMPORTANT : Ne génère JAMAIS de bloc JSON ou de métadonnées. Retourne UNIQUE
 
             collected = []
             async for token in context.llm.stream(
-                prompt=prompt, system_prompt=system_prompt, temperature=0.5, max_tokens=4096
+                prompt=prompt, system_prompt=system_prompt, temperature=0.5, max_tokens=8192
             ):
                 collected.append(token)
                 yield AgentResponseChunk(content=token)
