@@ -16,9 +16,13 @@ Fonctionnalités:
 from __future__ import annotations
 
 import json
+import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from app.framework.base import BaseAgent
 from app.framework.schemas import (
@@ -564,24 +568,12 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
 
     def _extract_chapters_from_response(self, response: str) -> list[dict]:
         """Extract structured chapters from LLM response JSON block."""
-        try:
-            start = response.find('```json')
-            if start == -1:
-                start = response.find('{')
-                if start == -1:
-                    return []
-                end = response.rfind('}') + 1
-            else:
-                start = response.find('{', start)
-                end_marker = response.find('```', start)
-                end = response.rfind('}', start, end_marker) + 1 if end_marker != -1 else response.rfind('}') + 1
 
-            data = json.loads(response[start:end])
-            chapters = data.get("chapters", [])
-
-            # Ensure each chapter has required fields
+        def _normalize_chapters(raw_chapters: list) -> list[dict]:
             result = []
-            for ch in chapters:
+            for ch in raw_chapters:
+                if not isinstance(ch, dict):
+                    continue
                 chapter = {
                     "id": ch.get("id", f"ch-{len(result)+1}"),
                     "number": ch.get("number", str(len(result)+1)),
@@ -594,8 +586,9 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
                     "status": "draft",
                     "sub_chapters": [],
                 }
-
                 for sub in ch.get("sub_chapters", []):
+                    if not isinstance(sub, dict):
+                        continue
                     chapter["sub_chapters"].append({
                         "id": sub.get("id", f"{chapter['id']}-{len(chapter['sub_chapters'])+1}"),
                         "number": sub.get("number", ""),
@@ -606,11 +599,74 @@ IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la s
                         "content": "",
                         "status": "draft",
                     })
-
                 result.append(chapter)
             return result
-        except (json.JSONDecodeError, ValueError, KeyError):
-            return []
+
+        # Strategy 1: extract from ```json ... ``` fenced block
+        json_blocks = re.findall(r'```json\s*([\s\S]*?)```', response)
+        for block in json_blocks:
+            try:
+                data = json.loads(block.strip())
+                chapters = data.get("chapters", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+                if chapters:
+                    result = _normalize_chapters(chapters)
+                    if result:
+                        logger.info(f"Extracted {len(result)} chapters from ```json block")
+                        return result
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        # Strategy 2: extract from any ``` ... ``` fenced block
+        code_blocks = re.findall(r'```\s*([\s\S]*?)```', response)
+        for block in code_blocks:
+            block = block.strip()
+            if not block.startswith(('{', '[')):
+                continue
+            try:
+                data = json.loads(block)
+                chapters = data.get("chapters", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+                if chapters:
+                    result = _normalize_chapters(chapters)
+                    if result:
+                        logger.info(f"Extracted {len(result)} chapters from code block")
+                        return result
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        # Strategy 3: find the largest JSON object in the raw text
+        brace_depth = 0
+        start = -1
+        candidates = []
+        for i, c in enumerate(response):
+            if c == '{':
+                if brace_depth == 0:
+                    start = i
+                brace_depth += 1
+            elif c == '}':
+                brace_depth -= 1
+                if brace_depth == 0 and start != -1:
+                    candidates.append(response[start:i + 1])
+                    start = -1
+
+        # Sort by length descending — the biggest JSON is most likely the structure
+        candidates.sort(key=len, reverse=True)
+        for candidate in candidates:
+            try:
+                data = json.loads(candidate)
+                chapters = data.get("chapters", []) if isinstance(data, dict) else []
+                if chapters:
+                    result = _normalize_chapters(chapters)
+                    if result:
+                        logger.info(f"Extracted {len(result)} chapters from raw JSON object")
+                        return result
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        logger.warning(
+            f"Failed to extract chapters from LLM response "
+            f"(response length={len(response)}, first 500 chars: {response[:500]})"
+        )
+        return []
 
     async def _handle_update_structure(
         self, message: UserMessage, context: AgentContext, system_prompt: str
