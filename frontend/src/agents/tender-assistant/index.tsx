@@ -17,7 +17,7 @@ import WorkspaceSelector from './components/WorkspaceSelector';
 // Types
 // =============================================================================
 
-type ViewId = 'documents' | 'analysis' | 'editor' | 'compliance' | 'export' | 'improvements' | 'confidentiality';
+type ViewId = 'documents' | 'analysis' | 'editor' | 'compliance' | 'export' | 'improvements' | 'confidentiality' | 'statistics';
 
 interface NavItem {
   id: ViewId;
@@ -29,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'documents', label: 'Documents', icon: '📁' },
   { id: 'analysis', label: 'Analyse', icon: '🔍' },
   { id: 'editor', label: 'Rédaction', icon: '✏️' },
+  { id: 'statistics', label: 'Tableau de bord', icon: '📊' },
   { id: 'compliance', label: 'Conformité', icon: '✅' },
   { id: 'improvements', label: 'Améliorations', icon: '💡' },
   { id: 'confidentiality', label: 'Confidentialité', icon: '🔒' },
@@ -274,6 +275,12 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           }
           break;
 
+        case 'pseudonyms_applied':
+          if (meta.chapters) {
+            setChapters(meta.chapters);
+          }
+          break;
+
         case 'workspace_exported':
           if (meta.fileKey && meta.fileName) {
             setLastExportKey(meta.fileKey);
@@ -399,6 +406,10 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
     sendMessage('', { action: 'update_pseudonyms', pseudonyms: updated });
   }, [sendMessage]);
 
+  const handleApplyPseudonyms = useCallback(() => {
+    sendMessage('', { action: 'apply_pseudonyms' });
+  }, [sendMessage]);
+
   const handleDetectConfidential = useCallback(() => {
     sendMessage('Détecte les données confidentielles dans les documents', { action: 'detect_confidential' });
   }, [sendMessage]);
@@ -492,6 +503,35 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
 
   return (
     <div style={styles.root}>
+      {/* Dark-mode CSS variables */}
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --ta-bg: #1e1e2e;
+            --ta-bg-alt: #262637;
+            --ta-surface: #232334;
+            --ta-text: #e0e0e8;
+            --ta-text-dim: #9ca3af;
+            --ta-border: #3a3a4e;
+            --ta-primary: #5c9cf5;
+            --ta-primary-bg: rgba(92,156,245,0.10);
+          }
+        }
+        [data-theme="dark"] {
+          --ta-bg: #1e1e2e;
+          --ta-bg-alt: #262637;
+          --ta-surface: #232334;
+          --ta-text: #e0e0e8;
+          --ta-text-dim: #9ca3af;
+          --ta-border: #3a3a4e;
+          --ta-primary: #5c9cf5;
+          --ta-primary-bg: rgba(92,156,245,0.10);
+        }
+        .ta-resize-handle { background: transparent; transition: background 0.15s; }
+        .ta-resize-handle:hover { background: var(--ta-primary, #1976d2); }
+      `}</style>
+
       {/* Left Sidebar */}
       <div style={styles.sidebar}>
         <div style={styles.sidebarHeader}>
@@ -526,8 +566,8 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
             style={{
               marginTop: 6,
               fontSize: 10,
-              color: '#1976d2',
-              background: 'none',
+              color: 'var(--ta-primary, #1976d2)',
+              background: 'transparent',
               border: 'none',
               cursor: 'pointer',
               padding: 0,
@@ -560,7 +600,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               style={styles.chatToggle}
               onClick={() => setChatOpen(!chatOpen)}
             >
-              {chatOpen ? '◀ Masquer le chat' : '▶ Ouvrir le chat'}
+              {chatOpen ? 'Masquer le chat' : 'Ouvrir le chat'}
             </button>
           </div>
         </div>
@@ -569,28 +609,28 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
         {isLoading && progress > 0 && (
           <div style={{
             padding: '10px 20px',
-            backgroundColor: '#e3f2fd',
-            borderBottom: '1px solid #90caf9',
+            backgroundColor: 'var(--ta-primary-bg, #e3f2fd)',
+            borderBottom: '1px solid var(--ta-border, #90caf9)',
             flexShrink: 0,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#1565c0' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ta-primary, #1565c0)' }}>
                 {progressMessage || 'Traitement en cours...'}
               </span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#1565c0' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ta-primary, #1565c0)' }}>
                 {progress}%
               </span>
             </div>
             <div style={{
               height: 6,
               borderRadius: 3,
-              backgroundColor: '#bbdefb',
+              backgroundColor: 'var(--ta-bg-alt, #bbdefb)',
               overflow: 'hidden',
             }}>
               <div style={{
                 height: '100%',
                 borderRadius: 3,
-                backgroundColor: '#1976d2',
+                backgroundColor: 'var(--ta-primary, #1976d2)',
                 width: `${progress}%`,
                 transition: 'width 0.4s ease',
               }} />
@@ -600,8 +640,8 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
         {isLoading && progress === 0 && (
           <div style={{
             padding: '8px 20px',
-            backgroundColor: '#fff8e1',
-            borderBottom: '1px solid #ffe082',
+            backgroundColor: 'var(--ta-bg-alt, #fff8e1)',
+            borderBottom: '1px solid var(--ta-border, #ffe082)',
             flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
@@ -611,15 +651,14 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               display: 'inline-block',
               width: 14,
               height: 14,
-              border: '2px solid #f9a825',
+              border: '2px solid var(--ta-primary, #f9a825)',
               borderTopColor: 'transparent',
               borderRadius: '50%',
               animation: 'spin 0.8s linear infinite',
             }} />
-            <span style={{ fontSize: 13, color: '#f57f17' }}>
+            <span style={{ fontSize: 13, color: 'var(--ta-text-dim, #f57f17)' }}>
               {progressMessage || 'Chargement en cours...'}
             </span>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         )}
 
@@ -666,6 +705,17 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
             />
           )}
 
+          {activeView === 'statistics' && (
+            <StatisticsPanel
+              chapters={chapters}
+              documents={documents}
+              analyses={analyses}
+              pseudonyms={pseudonyms}
+              improvements={improvements}
+              complianceResult={complianceResult}
+            />
+          )}
+
           {activeView === 'compliance' && (
             <ComplianceChecker
               chapters={chapters}
@@ -690,6 +740,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               pseudonyms={pseudonyms}
               onUpdate={handleUpdatePseudonyms}
               onDetect={handleDetectConfidential}
+              onApplyAll={handleApplyPseudonyms}
               isLoading={isLoading}
             />
           )}
@@ -720,6 +771,16 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           <>
             <div style={styles.chatHeader}>
               <h3 style={styles.chatTitle}>Assistant IA</h3>
+              <button
+                style={{
+                  ...styles.btn,
+                  ...styles.btnSmall,
+                  ...styles.btnSecondary,
+                }}
+                onClick={() => setChatOpen(false)}
+              >
+                Fermer
+              </button>
             </div>
             <ChatPanel
               messages={chatMessages}
@@ -731,6 +792,202 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           </>
         )}
       </div>
+    </div>
+  );
+};
+
+// =============================================================================
+// Statistics Panel
+// =============================================================================
+
+interface StatisticsPanelProps {
+  chapters: any[];
+  documents: any[];
+  analyses: Record<string, any>;
+  pseudonyms: any[];
+  improvements: any[];
+  complianceResult: any;
+}
+
+const StatisticsPanel: React.FC<StatisticsPanelProps> = ({
+  chapters, documents, analyses, pseudonyms, improvements, complianceResult,
+}) => {
+  // Compute stats
+  let totalChapters = 0;
+  let writtenChapters = 0;
+  let totalWords = 0;
+  const count = (chs: any[]) => {
+    for (const ch of chs) {
+      totalChapters++;
+      if (ch.content) {
+        writtenChapters++;
+        totalWords += ch.content.split(/\s+/).filter(Boolean).length;
+      }
+      count(ch.sub_chapters || []);
+    }
+  };
+  count(chapters);
+
+  const redactionProgress = totalChapters > 0 ? Math.round((writtenChapters / totalChapters) * 100) : 0;
+  const pageEstimate = Math.ceil(totalWords / 300);
+  const analyzedDocs = Object.keys(analyses).filter(k => k !== '_comparison').length;
+  const pseudonymCount = pseudonyms.length;
+  const pseudonymsFilled = pseudonyms.filter((p: any) => p.real && p.placeholder).length;
+  const complianceScore = complianceResult?.score ?? null;
+  const improvementCount = improvements.length;
+
+  const StatCard = ({ label, value, color, sub }: { label: string; value: string | number; color: string; sub?: string }) => (
+    <div style={{
+      padding: 20,
+      borderRadius: 10,
+      border: `1px solid var(--ta-border, #e2e5e9)`,
+      backgroundColor: 'var(--ta-bg, #fff)',
+      textAlign: 'center' as const,
+    }}>
+      <div style={{ fontSize: 32, fontWeight: 700, color, marginBottom: 4 }}>{value}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ta-text, #333)' }}>{label}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--ta-text-dim, #888)', marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  const ProgressRow = ({ label, percent, color }: { label: string; percent: number; color: string }) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ta-text, #333)' }}>{label}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color }}>{percent}%</span>
+      </div>
+      <div style={{ height: 8, borderRadius: 4, backgroundColor: 'var(--ta-bg-alt, #f0f0f0)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', borderRadius: 4, backgroundColor: color, width: `${percent}%`, transition: 'width 0.4s ease' }} />
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 800, margin: '0 auto' }}>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--ta-text, #333)', margin: '0 0 20px' }}>
+        Tableau de bord
+      </h3>
+
+      {/* Key metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <StatCard label="Chapitres rédigés" value={`${writtenChapters}/${totalChapters}`} color="#4caf50" sub={`${redactionProgress}% complet`} />
+        <StatCard label="Mots rédigés" value={totalWords.toLocaleString()} color="#1976d2" sub={`~${pageEstimate} pages`} />
+        <StatCard label="Documents" value={documents.length} color="#ff9800" sub={`${analyzedDocs} analysé(s)`} />
+        <StatCard label="Données masquées" value={pseudonymsFilled} color="#7b1fa2" sub={`${pseudonymCount} règle(s)`} />
+      </div>
+
+      {/* Progress bars */}
+      <div style={{
+        padding: 20,
+        borderRadius: 10,
+        border: `1px solid var(--ta-border, #e2e5e9)`,
+        backgroundColor: 'var(--ta-bg, #fff)',
+        marginBottom: 24,
+      }}>
+        <h4 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 16px', color: 'var(--ta-text, #333)' }}>Progression</h4>
+        <ProgressRow label="Rédaction" percent={redactionProgress} color="#4caf50" />
+        <ProgressRow label="Analyse documentaire" percent={documents.length > 0 ? Math.round((analyzedDocs / documents.length) * 100) : 0} color="#ff9800" />
+        {complianceScore !== null && (
+          <ProgressRow label="Conformité AO" percent={complianceScore} color={complianceScore >= 80 ? '#4caf50' : complianceScore >= 60 ? '#ff9800' : '#d32f2f'} />
+        )}
+        <ProgressRow label="Pseudonymisation" percent={pseudonymCount > 0 ? Math.round((pseudonymsFilled / pseudonymCount) * 100) : 0} color="#7b1fa2" />
+      </div>
+
+      {/* Suggestions */}
+      <div style={{
+        padding: 20,
+        borderRadius: 10,
+        border: `1px solid var(--ta-border, #e2e5e9)`,
+        backgroundColor: 'var(--ta-bg, #fff)',
+        marginBottom: 24,
+      }}>
+        <h4 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 12px', color: 'var(--ta-text, #333)' }}>Suggestions d'amélioration</h4>
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+          {totalChapters - writtenChapters > 0 && (
+            <SuggestionItem
+              icon="✏️"
+              text={`${totalChapters - writtenChapters} chapitre(s) restent à rédiger`}
+              priority="haute"
+            />
+          )}
+          {documents.length - analyzedDocs > 0 && (
+            <SuggestionItem
+              icon="🔍"
+              text={`${documents.length - analyzedDocs} document(s) n'ont pas encore été analysés`}
+              priority="normal"
+            />
+          )}
+          {complianceScore === null && writtenChapters > 0 && (
+            <SuggestionItem
+              icon="✅"
+              text="Lancez une vérification de conformité pour évaluer votre réponse"
+              priority="normal"
+            />
+          )}
+          {complianceScore !== null && complianceScore < 80 && (
+            <SuggestionItem
+              icon="⚠️"
+              text={`Score de conformité à ${complianceScore}% — des améliorations sont recommandées`}
+              priority="haute"
+            />
+          )}
+          {pseudonymCount === 0 && (
+            <SuggestionItem
+              icon="🔒"
+              text="Configurez la pseudonymisation pour protéger les données confidentielles"
+              priority="normal"
+            />
+          )}
+          {pseudonymCount > 0 && pseudonymsFilled < pseudonymCount && (
+            <SuggestionItem
+              icon="🔒"
+              text={`${pseudonymCount - pseudonymsFilled} pseudonyme(s) n'ont pas de valeur réelle renseignée`}
+              priority="basse"
+            />
+          )}
+          {improvementCount > 0 && (
+            <SuggestionItem
+              icon="💡"
+              text={`${improvementCount} point(s) d'amélioration identifiés à intégrer`}
+              priority="normal"
+            />
+          )}
+          {writtenChapters === totalChapters && totalChapters > 0 && complianceScore !== null && complianceScore >= 80 && (
+            <SuggestionItem
+              icon="🎉"
+              text="Votre réponse est complète et conforme. Prête pour l'export !"
+              priority="ok"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SUGGESTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  haute: { bg: '#fff3e0', text: '#e65100', border: '#ffcc02' },
+  normal: { bg: '#e3f2fd', text: '#1565c0', border: '#90caf9' },
+  basse: { bg: '#f5f5f5', text: '#616161', border: '#e0e0e0' },
+  ok: { bg: '#e8f5e9', text: '#2e7d32', border: '#a5d6a7' },
+};
+
+const SuggestionItem: React.FC<{ icon: string; text: string; priority: string }> = ({ icon, text, priority }) => {
+  const c = SUGGESTION_COLORS[priority] || SUGGESTION_COLORS.normal;
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      padding: '10px 14px',
+      borderRadius: 6,
+      backgroundColor: c.bg,
+      border: `1px solid ${c.border}`,
+      fontSize: 13,
+      color: c.text,
+    }}>
+      <span style={{ fontSize: 16 }}>{icon}</span>
+      <span>{text}</span>
     </div>
   );
 };

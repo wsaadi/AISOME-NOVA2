@@ -92,6 +92,28 @@ const ResponseEditor: React.FC<Props> = ({
   const [editingValue, setEditingValue] = useState('');
   const [addingChapter, setAddingChapter] = useState<{ parentId?: string } | null>(null);
   const [newChapterTitle, setNewChapterTitle] = useState('');
+  const [treeWidth, setTreeWidth] = useState(280);
+
+  // Resizable chapter tree handle
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = treeWidth;
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - startX;
+      setTreeWidth(Math.max(180, Math.min(500, startW + delta)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [treeWidth]);
 
   const selectedChapter = selectedChapterId
     ? findChapter(chapters, selectedChapterId)
@@ -356,9 +378,9 @@ const ResponseEditor: React.FC<Props> = ({
   return (
     <div style={{ ...styles.editorLayout, padding: 0, height: '100%' }}>
       {/* Chapter tree */}
-      <div style={styles.chapterTree}>
+      <div style={{ ...styles.chapterTree, width: treeWidth, minWidth: treeWidth }}>
         {/* View mode tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--divider-color, #e0e0e0)' }}>
+        <div style={{ display: 'flex', borderBottom: `1px solid var(--ta-border, #e0e0e0)` }}>
           {([
             ['editor', 'Rédaction'],
             ['full-preview', 'Aperçu'],
@@ -372,10 +394,10 @@ const ResponseEditor: React.FC<Props> = ({
                 padding: '8px 4px',
                 fontSize: 10,
                 fontWeight: viewMode === mode ? 700 : 500,
-                color: viewMode === mode ? 'var(--primary-color, #1976d2)' : '#888',
-                background: viewMode === mode ? 'var(--primary-bg, rgba(25,118,210,0.06))' : 'none',
+                color: viewMode === mode ? 'var(--ta-primary, #1976d2)' : 'var(--ta-text-dim, #888)',
+                background: viewMode === mode ? 'var(--ta-primary-bg, rgba(25,118,210,0.06))' : 'transparent',
                 border: 'none',
-                borderBottom: viewMode === mode ? '2px solid var(--primary-color, #1976d2)' : '2px solid transparent',
+                borderBottom: viewMode === mode ? '2px solid var(--ta-primary, #1976d2)' : '2px solid transparent',
                 cursor: 'pointer',
               }}
             >
@@ -385,8 +407,8 @@ const ResponseEditor: React.FC<Props> = ({
         </div>
 
         {/* Progress + bulk actions */}
-        <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--divider-color, #e0e0e0)' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 4 }}>PROGRESSION</div>
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid var(--ta-border, #e0e0e0)` }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ta-text-dim, #888)', marginBottom: 4 }}>PROGRESSION</div>
           <div style={styles.progressBar}>
             <div style={{ ...styles.progressFill, width: `${getProgress()}%`, backgroundColor: '#4caf50' }} />
           </div>
@@ -470,6 +492,13 @@ const ResponseEditor: React.FC<Props> = ({
           ))}
         </div>
       </div>
+
+      {/* Resize handle */}
+      <div
+        className="ta-resize-handle"
+        onMouseDown={handleResizeStart}
+        style={{ width: 5, cursor: 'col-resize', flexShrink: 0, zIndex: 10 }}
+      />
 
       {/* ── Right panel: depends on viewMode ─────────────────────── */}
       <div style={styles.editorArea}>
