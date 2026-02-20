@@ -209,11 +209,13 @@ async def get_job_status(
 
 
 @router.get("/progress/{session_id}")
-async def get_progress(
-    session_id: str,
-    current_user=Depends(get_current_user),
-):
-    """Récupère la progression en temps réel d'une exécution d'agent."""
+async def get_progress(session_id: str):
+    """
+    Récupère la progression en temps réel d'une exécution d'agent.
+
+    Pas d'authentification requise : les données (pourcentage + message)
+    ne sont pas sensibles et le session_id est aléatoire.
+    """
     import json
     try:
         import redis as _redis

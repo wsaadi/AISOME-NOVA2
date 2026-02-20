@@ -221,19 +221,17 @@ export function useAgent(
   };
 
   // Poll for progress while loading (works for both sync and async modes)
+  // No auth needed — endpoint is public (session_id is random/unguessable)
   useEffect(() => {
     if (!isLoading || !sessionId) return;
 
-    const token = localStorage.getItem('access_token');
-    const headers = { Authorization: `Bearer ${token}` };
     let active = true;
 
     const poll = async () => {
       while (active) {
         try {
           const res = await fetch(
-            `${API_BASE}/api/agent-runtime/progress/${sessionId}`,
-            { headers }
+            `${API_BASE}/api/agent-runtime/progress/${sessionId}`
           );
           if (res.ok) {
             const data = await res.json();
