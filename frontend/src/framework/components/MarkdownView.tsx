@@ -130,6 +130,9 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
 };
 
 export const MarkdownView: React.FC<MarkdownViewProps> = ({ content }) => {
+  // Pre-process: convert HTML <br> tags to markdown line breaks
+  const processed = content.replace(/<br\s*\/?>/gi, '  \n');
+
   return (
     <Box sx={{ lineHeight: 1.7, fontSize: '0.9rem', ...markdownStyles }}>
       <ReactMarkdown
@@ -157,7 +160,7 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content }) => {
           },
         }}
       >
-        {content}
+        {processed}
       </ReactMarkdown>
     </Box>
   );
