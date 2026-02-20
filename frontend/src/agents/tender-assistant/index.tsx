@@ -10,13 +10,14 @@ import ResponseEditor from './components/ResponseEditor';
 import ComplianceChecker from './components/ComplianceChecker';
 import ExportPanel from './components/ExportPanel';
 import ImprovementsPanel from './components/ImprovementsPanel';
+import PseudonymPanel from './components/PseudonymPanel';
 import WorkspaceSelector from './components/WorkspaceSelector';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-type ViewId = 'documents' | 'analysis' | 'editor' | 'compliance' | 'export' | 'improvements';
+type ViewId = 'documents' | 'analysis' | 'editor' | 'compliance' | 'export' | 'improvements' | 'confidentiality';
 
 interface NavItem {
   id: ViewId;
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'editor', label: 'Rédaction', icon: '✏️' },
   { id: 'compliance', label: 'Conformité', icon: '✅' },
   { id: 'improvements', label: 'Améliorations', icon: '💡' },
+  { id: 'confidentiality', label: 'Confidentialité', icon: '🔒' },
   { id: 'export', label: 'Export', icon: '📤' },
 ];
 
@@ -96,6 +98,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
   const [templateName, setTemplateName] = useState<string | null>(null);
   const [lastExportKey, setLastExportKey] = useState<string | null>(null);
   const [lastExportName, setLastExportName] = useState<string | null>(null);
+  const [pseudonyms, setPseudonyms] = useState<any[]>([]);
   const [stateLoaded, setStateLoaded] = useState(false);
   const processedMsgCount = useRef(0);
 
@@ -135,6 +138,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
             setChapters(meta.state.chapters || []);
             setImprovements(meta.state.improvements || []);
             setAnalyses(meta.state.analyses || {});
+            setPseudonyms(meta.state.pseudonyms || []);
           }
           break;
 
@@ -235,6 +239,12 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
           setTemplateKey(meta.templateKey);
           setTemplateName(meta.fileName);
           break;
+
+        case 'pseudonyms_updated':
+          if (meta.pseudonyms) {
+            setPseudonyms(meta.pseudonyms);
+          }
+          break;
       }
     }
   }, [messages]);
@@ -318,6 +328,12 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
       `Analyse le texte suivant et identifie les points d'amélioration. Pour chaque point identifié, donne un titre, une description, et une priorité (critique/haute/normal/basse) :\n\n${text}`,
       { action: 'chat' }
     );
+  }, [sendMessage]);
+
+  // -- Pseudonym handlers --
+  const handleUpdatePseudonyms = useCallback((updated: any[]) => {
+    setPseudonyms(updated);
+    sendMessage('', { action: 'update_pseudonyms', pseudonyms: updated });
   }, [sendMessage]);
 
   // -- Export handlers --
@@ -537,6 +553,7 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               isLoading={isLoading}
               streamingContent={streamingContent}
               error={error}
+              pseudonyms={pseudonyms}
             />
           )}
 
@@ -556,6 +573,13 @@ const TenderAssistantView: React.FC<TenderAssistantInternalProps> = ({
               onAdd={handleAddImprovement}
               onDelete={handleDeleteImprovement}
               onBulkImport={handleBulkImport}
+            />
+          )}
+
+          {activeView === 'confidentiality' && (
+            <PseudonymPanel
+              pseudonyms={pseudonyms}
+              onUpdate={handleUpdatePseudonyms}
             />
           )}
 

@@ -41,6 +41,7 @@ DOCS_META_KEY = "project/documents.json"
 CHAPTERS_KEY = "project/chapters.json"
 IMPROVEMENTS_KEY = "project/improvements.json"
 ANALYSIS_KEY = "project/analyses.json"
+PSEUDONYMS_KEY = "project/pseudonyms.json"
 
 
 class TenderAssistantAgent(BaseAgent):
@@ -78,6 +79,7 @@ class TenderAssistantAgent(BaseAgent):
             "export_docx": self._handle_export_docx,
             "upload_template": self._handle_upload_template,
             "get_project_state": self._handle_get_state,
+            "update_pseudonyms": self._handle_update_pseudonyms,
             "chat": self._handle_chat,
         }
 
@@ -147,6 +149,46 @@ class TenderAssistantAgent(BaseAgent):
 
     async def _save_analyses(self, context: AgentContext, analyses: dict) -> None:
         await self._save_json(context, ANALYSIS_KEY, analyses)
+
+    async def _get_pseudonyms(self, context: AgentContext) -> list[dict]:
+        return await self._load_json(context, PSEUDONYMS_KEY, [])
+
+    async def _save_pseudonyms(self, context: AgentContext, items: list[dict]) -> None:
+        await self._save_json(context, PSEUDONYMS_KEY, items)
+
+    def _pseudonymize(self, text: str, pseudonyms: list[dict]) -> str:
+        """Replace real values with placeholders before sending to LLM."""
+        for entry in pseudonyms:
+            real = entry.get("real", "")
+            placeholder = entry.get("placeholder", "")
+            if real and placeholder:
+                text = text.replace(real, placeholder)
+        return text
+
+    def _depseudonymize(self, text: str, pseudonyms: list[dict]) -> str:
+        """Replace placeholders with real values (for display)."""
+        for entry in pseudonyms:
+            real = entry.get("real", "")
+            placeholder = entry.get("placeholder", "")
+            if real and placeholder:
+                text = text.replace(placeholder, real)
+        return text
+
+    async def _llm_chat(
+        self, context: AgentContext, prompt: str,
+        system_prompt: str, temperature: float = 0.3, max_tokens: int = 4096,
+    ) -> str:
+        """Wrapper around context.llm.chat that auto-pseudonymizes the prompt."""
+        pseudonyms = await self._get_pseudonyms(context)
+        if pseudonyms:
+            prompt = self._pseudonymize(prompt, pseudonyms)
+            system_prompt = self._pseudonymize(system_prompt, pseudonyms)
+        return await context.llm.chat(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     async def _extract_document_text(
         self, context: AgentContext, file_key: str, file_name: str
@@ -299,8 +341,8 @@ CONTENU DU DOCUMENT :
 Fournis une analyse structurée complète en suivant ta méthodologie d'analyse.
 IMPORTANT : Inclus un bloc JSON structuré avec les données parsées (type document_analysis) en plus de ton analyse textuelle."""
 
-        analysis = await context.llm.chat(
-            prompt=analysis_prompt,
+        analysis = await self._llm_chat(
+            context, prompt=analysis_prompt,
             system_prompt=system_prompt,
             temperature=0.3,
             max_tokens=4096,
@@ -375,8 +417,8 @@ CONTENU DU DOCUMENT :
 Fournis une analyse structurée complète en suivant ta méthodologie d'analyse.
 IMPORTANT : Inclus un bloc JSON structuré avec les données parsées (type document_analysis) en plus de ton analyse textuelle."""
 
-            analysis = await context.llm.chat(
-                prompt=analysis_prompt,
+            analysis = await self._llm_chat(
+                context, prompt=analysis_prompt,
                 system_prompt=system_prompt,
                 temperature=0.3,
                 max_tokens=4096,
@@ -453,8 +495,8 @@ Fournis une comparaison structurée et détaillée :
 
 IMPORTANT : Inclus un bloc JSON structuré (type comparison) avec toutes les différences identifiées."""
 
-        comparison = await context.llm.chat(
-            prompt=comparison_prompt,
+        comparison = await self._llm_chat(
+            context, prompt=comparison_prompt,
             system_prompt=system_prompt,
             temperature=0.3,
             max_tokens=4096,
@@ -546,8 +588,8 @@ Génère une structure de réponse qui :
 
 IMPORTANT : Retourne un bloc JSON structuré (type response_structure) avec la structure complète des chapitres."""
 
-        structure = await context.llm.chat(
-            prompt=structure_prompt,
+        structure = await self._llm_chat(
+            context, prompt=structure_prompt,
             system_prompt=system_prompt,
             temperature=0.3,
             max_tokens=16384,
@@ -846,8 +888,8 @@ Rédige un contenu professionnel, structuré et complet pour ce chapitre.
 Utilise du markdown pour la mise en forme (titres, listes, tableaux, etc.).
 Sois concret, factuel et orienté solution."""
 
-        content = await context.llm.chat(
-            prompt=write_prompt,
+        content = await self._llm_chat(
+            context, prompt=write_prompt,
             system_prompt=system_prompt,
             temperature=0.5,
             max_tokens=4096,
@@ -897,8 +939,8 @@ Améliore le contenu en tenant compte de la demande. Conserve la structure exist
 sauf si l'utilisateur demande explicitement de la modifier. Retourne le contenu complet
 amélioré (pas juste les modifications)."""
 
-        improved = await context.llm.chat(
-            prompt=improve_prompt,
+        improved = await self._llm_chat(
+            context, prompt=improve_prompt,
             system_prompt=system_prompt,
             temperature=0.5,
             max_tokens=4096,
@@ -1035,8 +1077,8 @@ Vérifie :
 IMPORTANT : Retourne un bloc JSON structuré (type compliance_check) avec le score global,
 le statut par section et les actions prioritaires, EN PLUS de ton analyse textuelle."""
 
-        check_result = await context.llm.chat(
-            prompt=check_prompt,
+        check_result = await self._llm_chat(
+            context, prompt=check_prompt,
             system_prompt=system_prompt,
             temperature=0.2,
             max_tokens=4096,
@@ -1108,6 +1150,9 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
 
         context.set_progress(30, "Génération du document Word...")
 
+        # Load pseudonyms for depseudonymization in export
+        pseudonyms = await self._get_pseudonyms(context)
+
         # Build paragraphs for word-crud
         paragraphs = [
             {"text": title, "style": "Title"},
@@ -1115,14 +1160,18 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
             {"text": "", "style": "Normal"},
         ]
 
+        def _depr(text: str) -> str:
+            """Depseudonymize text for export."""
+            return self._depseudonymize(text, pseudonyms) if pseudonyms else text
+
         for ch in chapters:
-            paragraphs.append({"text": f"{ch['number']}. {ch['title']}", "style": "Heading 1"})
+            paragraphs.append({"text": f"{ch['number']}. {_depr(ch['title'])}", "style": "Heading 1"})
 
             if ch.get("description") and not ch.get("content"):
-                paragraphs.append({"text": ch["description"], "style": "Normal"})
+                paragraphs.append({"text": _depr(ch["description"]), "style": "Normal"})
 
             if ch.get("content"):
-                for line in ch["content"].split("\n"):
+                for line in _depr(ch["content"]).split("\n"):
                     stripped = line.strip()
                     if not stripped:
                         continue
@@ -1138,13 +1187,13 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
                         paragraphs.append({"text": stripped, "style": "Normal"})
 
             for sub in ch.get("sub_chapters", []):
-                paragraphs.append({"text": f"{sub['number']}. {sub['title']}", "style": "Heading 2"})
+                paragraphs.append({"text": f"{sub['number']}. {_depr(sub['title'])}", "style": "Heading 2"})
 
                 if sub.get("description") and not sub.get("content"):
-                    paragraphs.append({"text": sub["description"], "style": "Normal"})
+                    paragraphs.append({"text": _depr(sub["description"]), "style": "Normal"})
 
                 if sub.get("content"):
-                    for line in sub["content"].split("\n"):
+                    for line in _depr(sub["content"]).split("\n"):
                         stripped = line.strip()
                         if not stripped:
                             continue
@@ -1227,17 +1276,30 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
         chapters = await self._get_chapters(context)
         improvements = await self._get_improvements(context)
         analyses = await self._get_analyses(context)
+        pseudonyms = await self._get_pseudonyms(context)
 
         state = {
             "documents": docs,
             "chapters": chapters,
             "improvements": improvements,
             "analyses": analyses,
+            "pseudonyms": pseudonyms,
         }
 
         return AgentResponse(
             content=json.dumps(state, ensure_ascii=False),
             metadata={"type": "project_state", "state": state}
+        )
+
+    async def _handle_update_pseudonyms(
+        self, message: UserMessage, context: AgentContext, system_prompt: str
+    ) -> AgentResponse:
+        meta = message.metadata or {}
+        pseudonyms = meta.get("pseudonyms", [])
+        await self._save_pseudonyms(context, pseudonyms)
+        return AgentResponse(
+            content="Matrice de pseudonymisation mise à jour.",
+            metadata={"type": "pseudonyms_updated", "pseudonyms": pseudonyms}
         )
 
     # =========================================================================
@@ -1269,8 +1331,8 @@ le statut par section et les actions prioritaires, EN PLUS de ton analyse textue
         conversation_parts.append(f"[user]: {message.content}")
         full_prompt = "\n\n".join(conversation_parts)
 
-        response = await context.llm.chat(
-            prompt=full_prompt,
+        response = await self._llm_chat(
+            context, prompt=full_prompt,
             system_prompt=system_prompt,
             temperature=0.6,
             max_tokens=2048,
@@ -1315,6 +1377,12 @@ Contexte : {relevant_texts[:6000]}
 Contenu actuel : {chapter.get('content', '')}
 Demande : {message.content}"""
 
+            # Apply pseudonymization before streaming
+            pseudonyms = await self._get_pseudonyms(context)
+            if pseudonyms:
+                prompt = self._pseudonymize(prompt, pseudonyms)
+                system_prompt = self._pseudonymize(system_prompt, pseudonyms)
+
             collected = []
             async for token in context.llm.stream(
                 prompt=prompt, system_prompt=system_prompt, temperature=0.5, max_tokens=4096
@@ -1340,8 +1408,14 @@ Demande : {message.content}"""
                 parts.append(f"[{role}]: {content[:500]}")
             parts.append(f"[user]: {message.content}")
 
+            chat_prompt = "\n\n".join(parts)
+            pseudonyms = await self._get_pseudonyms(context)
+            if pseudonyms:
+                chat_prompt = self._pseudonymize(chat_prompt, pseudonyms)
+                system_prompt = self._pseudonymize(system_prompt, pseudonyms)
+
             async for token in context.llm.stream(
-                prompt="\n\n".join(parts), system_prompt=system_prompt, temperature=0.6, max_tokens=2048
+                prompt=chat_prompt, system_prompt=system_prompt, temperature=0.6, max_tokens=2048
             ):
                 yield AgentResponseChunk(content=token)
 
