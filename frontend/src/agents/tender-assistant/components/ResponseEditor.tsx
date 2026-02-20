@@ -93,6 +93,7 @@ const ResponseEditor: React.FC<Props> = ({
   const [addingChapter, setAddingChapter] = useState<{ parentId?: string } | null>(null);
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [treeWidth, setTreeWidth] = useState(280);
+  const [showPseudonyms, setShowPseudonyms] = useState(false);
 
   // Resizable chapter tree handle
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -503,7 +504,7 @@ const ResponseEditor: React.FC<Props> = ({
       {/* ── Right panel: depends on viewMode ─────────────────────── */}
       <div style={styles.editorArea}>
         {viewMode === 'full-preview' && (
-          <FullPreviewPanel chapters={chapters} buildFullDocument={buildFullDocument} />
+          <FullPreviewPanel chapters={chapters} buildFullDocument={buildFullDocument} pseudonyms={pseudonyms} showPseudonyms={showPseudonyms} onTogglePseudonyms={() => setShowPseudonyms(!showPseudonyms)} />
         )}
 
         {viewMode === 'structure' && (
@@ -602,6 +603,21 @@ const ResponseEditor: React.FC<Props> = ({
                       }
                     }}
                   />
+                  {pseudonyms.length > 0 && (
+                    <button
+                      style={{
+                        ...styles.btn, ...styles.btnSmall,
+                        backgroundColor: showPseudonyms ? '#ef6c00' : 'var(--ta-bg-alt, #f5f5f5)',
+                        color: showPseudonyms ? '#fff' : 'var(--ta-text-dim, #666)',
+                        border: showPseudonyms ? 'none' : '1px solid var(--ta-border, #ddd)',
+                        fontSize: 10,
+                      }}
+                      onClick={() => setShowPseudonyms(!showPseudonyms)}
+                      title={showPseudonyms ? 'Afficher la version finale (données réelles)' : 'Afficher la version IA (données pseudonymisées)'}
+                    >
+                      {showPseudonyms ? '🔒 Vue IA' : '🔓 Vue finale'}
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
@@ -625,6 +641,17 @@ const ResponseEditor: React.FC<Props> = ({
 
             {/* Content */}
             <div style={styles.editorContent}>
+              {showPseudonyms && !editMode && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '6px 12px', marginBottom: 10, borderRadius: 6,
+                  backgroundColor: '#fff3e0', border: '1px solid #ffcc80',
+                  fontSize: 11, color: '#e65100',
+                }}>
+                  <span>🔒</span>
+                  <span>Vue IA — Les données confidentielles sont remplacées par des pseudonymes</span>
+                </div>
+              )}
               {editMode ? (
                 <textarea
                   ref={textareaRef}
@@ -635,12 +662,12 @@ const ResponseEditor: React.FC<Props> = ({
                 />
               ) : streamingContent && isLoading ? (
                 <div style={styles.markdownContent}>
-                  <MarkdownView content={depseudonymize(streamingContent, pseudonyms)} />
+                  <MarkdownView content={showPseudonyms ? streamingContent : depseudonymize(streamingContent, pseudonyms)} />
                   <span style={{ display: 'inline-block', width: 8, height: 16, backgroundColor: 'var(--primary-color, #1976d2)', animation: 'blink 1s infinite', marginLeft: 2 }} />
                 </div>
               ) : selectedChapter.content ? (
                 <div style={styles.markdownContent}>
-                  <MarkdownView content={depseudonymize(selectedChapter.content, pseudonyms)} />
+                  <MarkdownView content={showPseudonyms ? selectedChapter.content : depseudonymize(selectedChapter.content, pseudonyms)} />
                 </div>
               ) : (
                 <div style={styles.editorPlaceholder}>
@@ -665,9 +692,13 @@ const ResponseEditor: React.FC<Props> = ({
 const FullPreviewPanel: React.FC<{
   chapters: Chapter[];
   buildFullDocument: () => string;
-}> = ({ chapters, buildFullDocument }) => {
+  pseudonyms: PseudonymEntry[];
+  showPseudonyms: boolean;
+  onTogglePseudonyms: () => void;
+}> = ({ chapters, buildFullDocument, pseudonyms, showPseudonyms, onTogglePseudonyms }) => {
   const fullDoc = buildFullDocument();
-  const wordCount = fullDoc.split(/\s+/).filter(Boolean).length;
+  const displayDoc = showPseudonyms ? fullDoc : depseudonymize(fullDoc, pseudonyms);
+  const wordCount = displayDoc.split(/\s+/).filter(Boolean).length;
   const pageEstimate = Math.ceil(wordCount / 300);
 
   return (
@@ -683,15 +714,39 @@ const FullPreviewPanel: React.FC<{
         <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--text-primary, #333)' }}>
           Aperçu du document complet
         </h3>
-        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#888' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 11, color: '#888' }}>
           <span>{chapters.length} chapitres</span>
           <span>{wordCount} mots</span>
           <span>~{pageEstimate} pages</span>
+          {pseudonyms.length > 0 && (
+            <button
+              style={{
+                padding: '3px 10px', fontSize: 10, fontWeight: 600, borderRadius: 4, cursor: 'pointer',
+                backgroundColor: showPseudonyms ? '#ef6c00' : 'var(--ta-bg-alt, #f5f5f5)',
+                color: showPseudonyms ? '#fff' : 'var(--ta-text-dim, #666)',
+                border: showPseudonyms ? 'none' : '1px solid var(--ta-border, #ddd)',
+              }}
+              onClick={onTogglePseudonyms}
+            >
+              {showPseudonyms ? '🔒 Vue IA' : '🔓 Vue finale'}
+            </button>
+          )}
         </div>
       </div>
+      {showPseudonyms && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 16px', flexShrink: 0,
+          backgroundColor: '#fff3e0', borderBottom: '1px solid #ffcc80',
+          fontSize: 11, color: '#e65100',
+        }}>
+          <span>🔒</span>
+          <span>Vue IA — Les données confidentielles sont remplacées par des pseudonymes</span>
+        </div>
+      )}
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 32px' }}>
         <div style={{ maxWidth: 800, margin: '0 auto' }}>
-          <MarkdownView content={fullDoc} />
+          <MarkdownView content={displayDoc} />
         </div>
       </div>
     </div>
