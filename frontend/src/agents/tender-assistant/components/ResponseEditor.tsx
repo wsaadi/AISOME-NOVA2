@@ -16,6 +16,13 @@ interface Chapter {
   sub_chapters: Chapter[];
 }
 
+interface PseudonymEntry {
+  id: string;
+  placeholder: string;
+  real: string;
+  category: string;
+}
+
 interface Props {
   chapters: Chapter[];
   onWriteChapter: (chapterId: string, instructions: string) => void;
@@ -26,13 +33,49 @@ interface Props {
   isLoading: boolean;
   streamingContent: string;
   error?: string | null;
+  pseudonyms?: PseudonymEntry[];
 }
 
 type ViewMode = 'editor' | 'full-preview' | 'structure';
 
+/** Replace pseudonym placeholders with real values for display */
+const depseudonymize = (text: string, pseudonyms: PseudonymEntry[]): string => {
+  if (!pseudonyms || pseudonyms.length === 0) return text;
+  let result = text;
+  for (const entry of pseudonyms) {
+    if (entry.placeholder && entry.real) {
+      result = result.split(entry.placeholder).join(entry.real);
+    }
+  }
+  return result;
+};
+
+/**
+ * Strip duplicate headings from AI-generated chapter content.
+ * The AI often generates its own heading (e.g. "# 1. Introduction") which
+ * conflicts with the heading we add in buildFullDocument(). This strips the
+ * first line if it looks like a markdown heading that repeats the chapter title.
+ */
+const stripLeadingHeading = (content: string, chapterTitle: string): string => {
+  const lines = content.split('\n');
+  if (lines.length === 0) return content;
+  const first = lines[0].trim();
+  // Match lines like "# 1. Title", "## 1.2. Title", "# Title", "## Title"
+  if (/^#{1,4}\s+/.test(first)) {
+    const headingText = first.replace(/^#{1,4}\s+/, '').replace(/^\d+(\.\d+)*\.?\s*/, '').trim().toLowerCase();
+    const titleNorm = chapterTitle.trim().toLowerCase();
+    // If the heading text is the chapter title (or very close), strip it
+    if (headingText === titleNorm || titleNorm.startsWith(headingText) || headingText.startsWith(titleNorm)) {
+      const rest = lines.slice(1).join('\n').replace(/^\n+/, '');
+      return rest;
+    }
+  }
+  return content;
+};
+
 const ResponseEditor: React.FC<Props> = ({
   chapters, onWriteChapter, onImproveChapter, onSaveContent, onUpdateStructure,
-  onGenerateStructure, isLoading, streamingContent, error,
+  onGenerateStructure, isLoading, streamingContent, error, pseudonyms = [],
 }) => {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -240,7 +283,7 @@ const ResponseEditor: React.FC<Props> = ({
     for (const ch of chapters) {
       parts.push(`# ${ch.number}. ${ch.title}`);
       if (ch.content) {
-        parts.push(ch.content);
+        parts.push(stripLeadingHeading(ch.content, ch.title));
       } else {
         parts.push('*Contenu non rédigé*');
       }
@@ -248,14 +291,14 @@ const ResponseEditor: React.FC<Props> = ({
       for (const sub of ch.sub_chapters || []) {
         parts.push(`## ${sub.number}. ${sub.title}`);
         if (sub.content) {
-          parts.push(sub.content);
+          parts.push(stripLeadingHeading(sub.content, sub.title));
         } else {
           parts.push('*Contenu non rédigé*');
         }
         parts.push('');
       }
     }
-    return parts.join('\n\n');
+    return depseudonymize(parts.join('\n\n'), pseudonyms);
   };
 
   // ── Empty state ─────────────────────────────────────────────────────
@@ -523,12 +566,12 @@ const ResponseEditor: React.FC<Props> = ({
                 />
               ) : streamingContent && isLoading ? (
                 <div style={styles.markdownContent}>
-                  <MarkdownView content={streamingContent} />
+                  <MarkdownView content={depseudonymize(streamingContent, pseudonyms)} />
                   <span style={{ display: 'inline-block', width: 8, height: 16, backgroundColor: 'var(--primary-color, #1976d2)', animation: 'blink 1s infinite', marginLeft: 2 }} />
                 </div>
               ) : selectedChapter.content ? (
                 <div style={styles.markdownContent}>
-                  <MarkdownView content={selectedChapter.content} />
+                  <MarkdownView content={depseudonymize(selectedChapter.content, pseudonyms)} />
                 </div>
               ) : (
                 <div style={styles.editorPlaceholder}>

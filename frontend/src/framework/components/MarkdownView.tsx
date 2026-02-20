@@ -6,10 +6,14 @@
  *   <MarkdownView content="# Hello **world**" />
  */
 
-import React from 'react';
+import React, { useEffect, useRef, useId } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Box } from '@mui/material';
+import mermaid from 'mermaid';
+
+// Initialize mermaid once
+mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 
 interface MarkdownViewProps {
   /** Contenu markdown à rendre */
@@ -88,10 +92,71 @@ const markdownStyles = {
   '& strong': { fontWeight: 600 },
 };
 
+/**
+ * Mermaid code block renderer.
+ * Renders mermaid diagrams (graph TD, sequenceDiagram, etc.)
+ */
+const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const id = `mermaid-${useId().replace(/:/g, '')}`;
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { svg } = await mermaid.render(id, code);
+        if (!cancelled && containerRef.current) {
+          containerRef.current.innerHTML = svg;
+        }
+      } catch {
+        // If mermaid fails, show raw code
+        if (!cancelled && containerRef.current) {
+          containerRef.current.textContent = code;
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [code, id]);
+
+  return (
+    <Box
+      ref={containerRef}
+      sx={{ my: 2, display: 'flex', justifyContent: 'center', overflow: 'auto' }}
+    />
+  );
+};
+
 export const MarkdownView: React.FC<MarkdownViewProps> = ({ content }) => {
   return (
     <Box sx={{ lineHeight: 1.7, fontSize: '0.9rem', ...markdownStyles }}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code({ className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || '');
+            const lang = match?.[1];
+            const codeStr = String(children).replace(/\n$/, '');
+
+            if (lang === 'mermaid') {
+              return <MermaidBlock code={codeStr} />;
+            }
+
+            // Inline code (no language class) vs block code
+            if (!className) {
+              return <code {...props}>{children}</code>;
+            }
+
+            return (
+              <code className={className} {...props}>
+                {children}
+              </code>
+            );
+          },
+        }}
+      >
         {content}
       </ReactMarkdown>
     </Box>
